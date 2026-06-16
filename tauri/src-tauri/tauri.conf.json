@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Watermelon Vector Converter",
+  "version": "0.1.0",
+  "identifier": "com.watermelon.converter",
+  "app": {
+    "security": { "capabilities": ["fs", "dialog", "window"] }
+  },
+  "_comment": "Copyright (c) 2026 Suhail Muzaffari. Allowlist limited to fs/dialog/window by design."
+}

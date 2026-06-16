@@ -1,0 +1,17 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+# Android
+*.apk
+*.aab
+/android/app/build/
+/android/.gradle/
+local.properties
+# Tauri / frontend
+/tauri/src-tauri/target/
+/tauri/node_modules/
+/tauri/dist/
+# Misc
+.DS_Store
+*.log

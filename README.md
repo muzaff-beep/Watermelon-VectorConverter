@@ -1,31 +1,10 @@
-# 🍉 WVGC - Watermelon Vector Graphics Converter
+# Watermelon Vector Converter
 
-**SVG → Android VectorDrawable Converter**  
-*Offline · Multiplatform · Source-Available*
+**A fast, fully offline, multiplatform converter from SVG vector graphics to Android VectorDrawable XML.**
 
-[![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE.md)
-[![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20Windows%20%7C%20Linux-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-1.5-red)]()
-[![Source Available](https://img.shields.io/badge/source-available-blue)]()
-
----
-
-## Overview
-
-WVGC is a high-performance, completely offline application that converts SVG vector graphics into native Android VectorDrawable (VD) XML format. Built around a single Rust core shared across Android and Desktop, it delivers consistent, reliable conversion with visual preview and batch processing.
-
-**Key Features:**
-- ✅ Convert single SVG files or entire ZIP archives (500+ files in <30s)
-- 🖼️ Dual approximate preview: original SVG vs. generated VectorDrawable side-by-side
-- 📦 Export as individual `.xml` files or a new ZIP archive
-- 🚫 100% offline – zero network calls, zero telemetry
-- 🔒 No permissions required (Android SAF, native dialogs)
-- 🎨 Watermelon-themed native UI (Material 3 on Android, Tauri on Desktop)
-
----
-
-# Watermelon Vector Graphics Converter
+Convert single SVG files or large ZIP batches into high-fidelity Android
+`VectorDrawable` XML, with an approximate dual visual preview and flexible
+export — entirely offline, with zero network calls.
 
 > **Copyright © 2026 Suhail Muzaffari. All rights reserved.**
 > This is **proprietary, source-available** software. It is **not** open source.

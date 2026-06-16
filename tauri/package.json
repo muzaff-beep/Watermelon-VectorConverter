@@ -1,0 +1,9 @@
+{
+  "name": "watermelon-vector-converter",
+  "version": "0.1.0",
+  "private": true,
+  "license": "LicenseRef-Proprietary",
+  "author": "Suhail Muzaffari <so.muzaff@gmail.com>",
+  "scripts": { "dev": "vite", "build": "vite build", "tauri": "tauri" },
+  "comment": "TODO(T): pin Svelte/React + Vite + @tauri-apps/api"
+}

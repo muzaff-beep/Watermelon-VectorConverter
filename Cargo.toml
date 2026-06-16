@@ -1,0 +1,14 @@
+# Watermelon Vector Converter — workspace manifest
+# Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
+[workspace]
+resolver = "2"
+members = [
+    "svg-converter-core",
+    "tauri/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Suhail Muzaffari <so.muzaff@gmail.com>"]
+license = "LicenseRef-Proprietary"
