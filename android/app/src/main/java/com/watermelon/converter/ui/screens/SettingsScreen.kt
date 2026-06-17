@@ -12,6 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import com.watermelon.converter.logging.AppLogger
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.watermelon.converter.data.prefs.ThemeMode
@@ -59,6 +62,22 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = viewModel()) {
                     Text(mode.name.lowercase().replaceFirstChar { it.uppercase() })
                 }
             }
+
+            HorizontalDivider()
+
+            Text("Diagnostics", style = MaterialTheme.typography.titleLarge)
+            val ctx = LocalContext.current
+            Button(
+                onClick = {
+                    val saved = AppLogger.dump("manual save from Settings")
+                    Toast.makeText(
+                        ctx,
+                        if (saved != null) "Saved to Downloads/WVGC/$saved" else "Could not save logs",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Save logs to Downloads") }
         }
     }
 }
