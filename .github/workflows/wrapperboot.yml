@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
+# One-shot helper: generates the Gradle wrapper (gradlew, gradlew.bat,
+# gradle-wrapper.jar) inside android/ and commits it back to the repo.
+# Run it manually from the Actions tab; delete it afterwards if you like.
+name: bootstrap-gradle-wrapper
+
+on:
+  workflow_dispatch:        # manual trigger only
+
+permissions:
+  contents: write           # needed to push the commit back
+
+jobs:
+  generate-wrapper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate the wrapper (Gradle 8.9)
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.9 --distribution-type bin
+
+      - name: Ensure gradlew is executable
+        working-directory: android
+        run: chmod +x gradlew
+
+      - name: Commit and push the wrapper
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar
+          git update-index --chmod=+x android/gradlew
+          if git diff --cached --quiet; then
+            echo "Wrapper already present and unchanged — nothing to commit."
+          else
+            git commit -m "ci: add Gradle wrapper (8.9) [skip ci]"
+            git push
+          fi
