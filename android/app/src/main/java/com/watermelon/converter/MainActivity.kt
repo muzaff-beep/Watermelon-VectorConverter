@@ -6,6 +6,7 @@
 package com.watermelon.converter
 
 import android.os.Bundle
+import com.watermelon.converter.logging.AppLogger
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,6 +23,7 @@ import com.watermelon.converter.ui.theme.WatermelonTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.log("MainActivity", "onCreate start")
         setContent {
             val settingsVm: com.watermelon.converter.viewmodel.SettingsViewModel =
                 androidx.lifecycle.viewmodel.compose.viewModel()
@@ -37,6 +39,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        AppLogger.log("MainActivity", "onCreate done — UI set")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppLogger.log("MainActivity", "onResume")
+    }
+
+    override fun onPause() {
+        super.onPause()
+        AppLogger.log("MainActivity", "onPause")
     }
 }
 
