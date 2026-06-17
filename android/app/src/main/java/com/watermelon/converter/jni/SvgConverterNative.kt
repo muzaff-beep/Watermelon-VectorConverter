@@ -5,12 +5,20 @@
 
 package com.watermelon.converter.jni
 
-// FFI bridge — Kotlin side (Contract C-3). Loads libsvg_converter_core.so.
-// Signatures must match jni.rs byte-for-byte (verified in CI).
+// FFI bridge — Kotlin side (Contract C-3).
+// Signatures MUST match svg-converter-core/src/jni.rs byte-for-byte.
+// Enforced by ci/verify_interfaces.py on every push.
+//
+// STATUS: write-only in CI containers (no JVM/device here). The real
+// round-trip is validated by an on-device instrumented test (Doc 5 §6).
 
+/** Thrown by native code on any ConversionError. `code` is the C-4 numeric code. */
 class ConversionException(val code: Int, message: String) : RuntimeException(message)
 
-interface ProgressCallback { fun onProgress(done: Int, total: Int, currentName: String) }
+/** Progress callback invoked by the native coordinator during batch conversion. */
+interface ProgressCallback {
+    fun onProgress(done: Int, total: Int, currentName: String)
+}
 
 object SvgConverterNative {
     init { System.loadLibrary("svg_converter_core") }

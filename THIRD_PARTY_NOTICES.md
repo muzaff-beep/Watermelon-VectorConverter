@@ -85,3 +85,4 @@ npx license-checker --production --out THIRD_PARTY_FRONTEND.txt
 
 Replace the baseline tables above with the generated output before each
 public release so the notices match the shipped dependency versions exactly.
+Module B adds: jni 0.21 (MIT/Apache-2.0) on Android targets.
