@@ -4,6 +4,8 @@ import org.gradle.api.tasks.Exec
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")   // Kotlin 2.0+ Compose compiler
+    id("com.google.devtools.ksp")               // annotation processing
 }
 
 android {
@@ -17,7 +19,6 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     splits {
@@ -37,12 +38,12 @@ android {
     }
 
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
+    // composeOptions block removed: Kotlin 2.0+ uses the compose plugin above
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 
     // Where cargo-ndk places the built .so files.
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
