@@ -21,7 +21,16 @@ interface ProgressCallback {
 }
 
 object SvgConverterNative {
-    init { System.loadLibrary("svg_converter_core") }
+    init {
+        try {
+            com.watermelon.converter.logging.AppLogger.log("SvgConverterNative", "loading libsvg_converter_core.so")
+            System.loadLibrary("svg_converter_core")
+            com.watermelon.converter.logging.AppLogger.log("SvgConverterNative", "native library loaded OK")
+        } catch (t: Throwable) {
+            com.watermelon.converter.logging.AppLogger.logError("SvgConverterNative", "FAILED to load native library", t)
+            throw t
+        }
+    }
 
     external fun nativeConvertSvg(svg: ByteArray): String
     external fun nativeConvertZip(zip: ByteArray, cb: ProgressCallback): ByteArray
