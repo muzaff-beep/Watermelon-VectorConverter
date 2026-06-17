@@ -39,8 +39,18 @@ sealed interface ConvertUiState {
 
 class ConversionViewModel(
     app: Application,
-    private val native: SvgConverter = RealSvgConverter,
+    private val native: SvgConverter,
 ) : AndroidViewModel(app) {
+
+    /**
+     * Constructor used by the Android ViewModel factory, which builds
+     * ViewModels by reflection and requires a real (Application) constructor.
+     * Kotlin default arguments do NOT produce one (they compile to a single
+     * constructor with a synthetic mask arg), so we declare it explicitly and
+     * delegate to the injectable constructor with the production bridge.
+     */
+    constructor(app: Application) : this(app, RealSvgConverter)
+
 
     private val repo = FileRepository(app.applicationContext)
     private val settingsRepo = SettingsRepository(app.applicationContext)
