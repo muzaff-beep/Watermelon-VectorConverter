@@ -15,6 +15,7 @@ pub mod vector_drawable;
 pub mod utils;
 pub mod image_export;
 pub mod batch_processor;
+pub mod jni;
 
 pub use error::ConversionError;
 
