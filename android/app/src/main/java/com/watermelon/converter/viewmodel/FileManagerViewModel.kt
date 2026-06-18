@@ -11,7 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watermelon.converter.data.files.FileKind
 import com.watermelon.converter.data.files.FileNode
-import com.watermelon.converter.data.files.FilesRepository
+import com.watermelon.converter.data.files.FileTreeRepository
 import com.watermelon.converter.data.files.TypeFilter
 import com.watermelon.converter.data.repository.FileRepository
 import com.watermelon.converter.jni.RealSvgConverter
@@ -48,7 +48,7 @@ class FileManagerViewModel(
 
     constructor(app: Application) : this(app, RealSvgConverter)
 
-    private val files = FilesRepository(app.applicationContext)
+    private val files = FileTreeRepository(app.applicationContext)
     private val io = FileRepository(app.applicationContext)
 
     private val _root = MutableStateFlow<Uri?>(null)
