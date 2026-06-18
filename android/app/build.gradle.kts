@@ -43,10 +43,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 
     // Where cargo-ndk places the built .so files.
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+}
+
+// Kotlin compiler options live on the kotlin {} extension (Kotlin 2.0 plugin),
+// not inside android {} where the old kotlinOptions shim used to sit.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 dependencies {
