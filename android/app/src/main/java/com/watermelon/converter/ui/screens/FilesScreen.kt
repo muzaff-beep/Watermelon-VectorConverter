@@ -50,6 +50,7 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
     val filter by vm.filter.collectAsState()
     val marked by vm.marked.collectAsState()
     val preview by vm.preview.collectAsState()
+    val previewedFile by vm.previewedFile.collectAsState()
     val query by vm.query.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
     val converting by vm.converting.collectAsState()
@@ -116,7 +117,6 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
                             isMarked = vm.isMarked(row.node),
                             onTapDir = { vm.toggleDir(row.node) },
                             onTapFile = { vm.preview(row.node) },
-                            onToggleMark = { vm.toggleMark(row.node) },
                         )
                     }
                 }
@@ -124,6 +124,9 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
                     HorizontalDivider()
                     PreviewPane(
                         state = preview,
+                        isMarkable = previewedFile?.kind == com.watermelon.converter.data.files.FileKind.Svg,
+                        isMarked = previewedFile?.let { marked.contains(it.file.absolutePath) } ?: false,
+                        onToggleMark = { vm.toggleMarkPreviewed() },
                         onExpand = { fullScreen = true },
                         onClose = { vm.closePreview() },
                     )
@@ -226,14 +229,13 @@ private fun TreeRowItem(
     isMarked: Boolean,
     onTapDir: () -> Unit,
     onTapFile: () -> Unit,
-    onToggleMark: () -> Unit,
 ) {
     val node = row.node
     Row(
         Modifier
             .fillMaxWidth()
             .clickable { if (node.isDirectory) onTapDir() else onTapFile() }
-            .background(if (isMarked) FreshTeal.copy(alpha = 0.12f) else Color.Transparent)
+            .background(if (isMarked) WatermelonRed.copy(alpha = 0.08f) else Color.Transparent)
             .padding(start = 4.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -276,8 +278,10 @@ private fun TreeRowItem(
                 )
             }
         }
-        if (node.kind == FileKind.Svg) {
-            Checkbox(checked = isMarked, onCheckedChange = { onToggleMark() })
+        // Marked files show a red bookmark, pinned on the row. Marking itself
+        // happens from the preview panel, not here.
+        if (isMarked) {
+            Text("\uD83D\uDD16", style = MaterialTheme.typography.titleLarge)
         }
     }
 }
@@ -290,7 +294,14 @@ private fun humanSize(bytes: Long): String {
 }
 
 @Composable
-private fun PreviewPane(state: PreviewState, onExpand: () -> Unit, onClose: () -> Unit) {
+private fun PreviewPane(
+    state: PreviewState,
+    isMarkable: Boolean,
+    isMarked: Boolean,
+    onToggleMark: () -> Unit,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -304,6 +315,12 @@ private fun PreviewPane(state: PreviewState, onExpand: () -> Unit, onClose: () -
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Bookmark = mark this file for conversion. Only SVGs are markable.
+            if (isMarkable) {
+                TextButton(onClick = onToggleMark) {
+                    Text(if (isMarked) "\uD83D\uDD16 Marked" else "\uD83D\uDD16 Mark")
+                }
+            }
             TextButton(onClick = onExpand) { Text("Expand") }
             TextButton(onClick = onClose) { Text("Close") }
         }
@@ -363,4 +380,3 @@ private fun ConvertResultDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
     )
-}
