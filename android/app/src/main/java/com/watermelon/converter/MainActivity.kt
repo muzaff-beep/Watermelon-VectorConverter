@@ -6,7 +6,6 @@
 package com.watermelon.converter
 
 import android.os.Bundle
-import com.watermelon.converter.logging.AppLogger
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -14,28 +13,32 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.watermelon.converter.data.prefs.ThemeMode
+import com.watermelon.converter.logging.AppLogger
+import com.watermelon.converter.ui.MainPager
 import com.watermelon.converter.ui.screens.*
 import com.watermelon.converter.ui.theme.WatermelonTheme
+import com.watermelon.converter.viewmodel.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.log("MainActivity", "onCreate start")
         setContent {
-            val settingsVm: com.watermelon.converter.viewmodel.SettingsViewModel =
-                androidx.lifecycle.viewmodel.compose.viewModel()
+            val settingsVm: SettingsViewModel = viewModel()
             val settings by settingsVm.settings.collectAsState()
             val dark = when (settings.themeMode) {
-                com.watermelon.converter.data.prefs.ThemeMode.LIGHT -> false
-                com.watermelon.converter.data.prefs.ThemeMode.DARK -> true
-                com.watermelon.converter.data.prefs.ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
             }
             WatermelonTheme(darkTheme = dark) {
                 Surface(modifier = Modifier) {
-                    AppNavHost()
+                    AppNavHost(settingsVm)
                 }
             }
         }
@@ -54,29 +57,23 @@ class MainActivity : ComponentActivity() {
 }
 
 object Routes {
-    const val HOME = "home"
+    const val PAGER = "pager"          // Home + Files + Settings (swipeable)
     const val IMPORT = "import"
     const val PREVIEW = "preview"
     const val BATCH = "batch"
     const val EXPORT = "export"
-    const val SETTINGS = "settings"
     const val HISTORY = "history"
-    const val FILES = "files"
-    const val REPORT = "report"
 }
 
 @androidx.compose.runtime.Composable
-fun AppNavHost() {
+fun AppNavHost(settingsVm: SettingsViewModel) {
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = Routes.HOME) {
-        composable(Routes.HOME) { HomeScreen(nav) }
+    NavHost(navController = nav, startDestination = Routes.PAGER) {
+        composable(Routes.PAGER) { MainPager(nav, settingsVm) }
         composable(Routes.IMPORT) { ImportScreen(nav) }
         composable(Routes.PREVIEW) { PreviewScreen(nav) }
         composable(Routes.BATCH) { BatchScreen(nav) }
         composable(Routes.EXPORT) { ExportScreen(nav) }
-        composable(Routes.SETTINGS) { SettingsScreen(nav) }
         composable(Routes.HISTORY) { HistoryScreen(nav) }
-        composable(Routes.FILES) { FilesScreen(nav) }
-        composable(Routes.REPORT) { ReportScreen(nav) }
     }
 }
