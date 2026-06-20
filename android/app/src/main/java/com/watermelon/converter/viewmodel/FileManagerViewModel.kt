@@ -78,6 +78,9 @@ class FileManagerViewModel(
     private val _preview = MutableStateFlow<PreviewState>(PreviewState.Empty)
     val preview: StateFlow<PreviewState> = _preview.asStateFlow()
 
+    private val _previewedFile = MutableStateFlow<FileNode?>(null)
+    val previewedFile: StateFlow<FileNode?> = _previewedFile.asStateFlow()
+
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
@@ -121,7 +124,6 @@ class FileManagerViewModel(
         rebuild()
     }
 
-    fun toggleMark(node: FileNode) = MarkedFilesStore.toggle(node.file)
     fun isMarked(node: FileNode): Boolean = MarkedFilesStore.isMarked(node.file)
     fun clearMarks() = MarkedFilesStore.clear()
 
@@ -140,6 +142,7 @@ class FileManagerViewModel(
     }
 
     fun preview(node: FileNode) {
+        _previewedFile.value = node
         _preview.value = PreviewState.Loading
         viewModelScope.launch {
             try {
@@ -165,7 +168,17 @@ class FileManagerViewModel(
         }
     }
 
-    fun closePreview() { _preview.value = PreviewState.Empty }
+    fun closePreview() {
+        _preview.value = PreviewState.Empty
+        _previewedFile.value = null
+    }
+
+    /** Toggle the mark on whatever file is currently previewed. Only SVG files
+     *  can be marked (only they can be converted). */
+    fun toggleMarkPreviewed() {
+        val node = _previewedFile.value ?: return
+        if (node.kind == FileKind.Svg) MarkedFilesStore.toggle(node.file)
+    }
 
     /**
      * Zip every marked SVG file, run native convertZip, write the result into
