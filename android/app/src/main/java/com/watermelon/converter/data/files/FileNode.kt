@@ -5,14 +5,13 @@
 
 package com.watermelon.converter.data.files
 
-import android.net.Uri
+import java.io.File
 
-/** A node in the SAF-browsed tree. Directories are expandable; files are leaves. */
+/** A node in the real-filesystem-browsed tree. Directories are expandable; files are leaves. */
 data class FileNode(
-    val uri: Uri,
+    val file: File,
     val name: String,
     val isDirectory: Boolean,
-    val mimeType: String?,
     val sizeBytes: Long,
     val lastModified: Long,
 ) {
