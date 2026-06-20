@@ -62,7 +62,7 @@ fun ExportScreen(
                     Text("Choose destination folder")
                 }
             }
-            OutlinedButton(onClick = { nav.navigate(Routes.HOME) }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { nav.navigate(Routes.PAGER) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Done")
             }
         }
