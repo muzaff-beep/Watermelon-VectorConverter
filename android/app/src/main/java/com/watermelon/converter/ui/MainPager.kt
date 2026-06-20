@@ -24,7 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.navigation.NavController
 import com.watermelon.converter.ui.screens.FilesScreen
@@ -37,7 +37,7 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val TABS = listOf(
     Tab("Home", Icons.Filled.Home),
-    Tab("Files", Icons.Filled.Folder),
+    Tab("Files", Icons.Filled.Search),
     Tab("Settings", Icons.Filled.Settings),
 )
 
