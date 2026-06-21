@@ -8,6 +8,8 @@ package com.watermelon.converter.ui.screens
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -62,7 +64,7 @@ fun PreviewScreen(nav: NavController, vm: ConversionViewModel = nav.sharedGraphV
             return@Scaffold
         }
         Column(
-            modifier = Modifier.fillMaxSize().padding(pad).padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(done.sourceName, style = MaterialTheme.typography.titleLarge)
