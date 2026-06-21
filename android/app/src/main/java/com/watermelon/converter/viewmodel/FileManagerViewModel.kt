@@ -220,11 +220,23 @@ class FileManagerViewModel(
                     val resultZip = native.convertZip(zipBytes, object : com.watermelon.converter.jni.ProgressCallback {
                         override fun onProgress(done: Int, total: Int, currentName: String) {}
                     })
-                    // tally success/failure by scanning for .error.txt sidecars
+                    // Scan output: record each file to history, tally success/fail.
                     java.util.zip.ZipInputStream(resultZip.inputStream()).use { zis ->
                         while (true) {
                             val e = zis.nextEntry ?: break
-                            if (e.name.endsWith(".error.txt")) failed++ else succeeded++
+                            val content = zis.readBytes()
+                            if (e.name.endsWith(".error.txt")) {
+                                failed++
+                                val src = e.name.removeSuffix(".error.txt")
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    src, "", ok = false, error = String(content).trim()
+                                )
+                            } else {
+                                succeeded++
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    e.name, String(content), ok = true
+                                )
+                            }
                         }
                     }
                     val outName = "batch_${System.currentTimeMillis()}.zip"
@@ -339,7 +351,19 @@ class FileManagerViewModel(
                     java.util.zip.ZipInputStream(resultZip.inputStream()).use { zis ->
                         while (true) {
                             val e = zis.nextEntry ?: break
-                            if (e.name.endsWith(".error.txt")) failed++ else succeeded++
+                            val content = zis.readBytes()
+                            if (e.name.endsWith(".error.txt")) {
+                                failed++
+                                val src = e.name.removeSuffix(".error.txt")
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    src, "", ok = false, error = String(content).trim()
+                                )
+                            } else {
+                                succeeded++
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    e.name, String(content), ok = true
+                                )
+                            }
                         }
                     }
                     val outFile = File(WvgcPaths.batchFilesDir, "batch_${System.currentTimeMillis()}.zip")
