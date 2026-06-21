@@ -6,6 +6,8 @@
 package com.watermelon.converter.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,9 +29,9 @@ fun HomeScreen(nav: NavController) {
         )
     }) { pad ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(pad).padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Convert SVG to Android VectorDrawable", textAlign = TextAlign.Center, style = MaterialTheme.typography.titleLarge)
             Text("Fully offline. No network.", style = MaterialTheme.typography.bodyLarge)
