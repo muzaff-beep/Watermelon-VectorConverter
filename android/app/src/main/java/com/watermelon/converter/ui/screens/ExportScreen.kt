@@ -8,6 +8,8 @@ package com.watermelon.converter.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,9 +45,9 @@ fun ExportScreen(
 
     Scaffold(topBar = { TopAppBar(title = { Text("Export") }) }) { pad ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(pad).padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             val hasSingle = convState is ConvertUiState.Done
             val hasBatch = batchState is BatchUiState.Done
