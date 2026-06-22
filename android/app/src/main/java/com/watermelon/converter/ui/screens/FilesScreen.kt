@@ -7,48 +7,70 @@ package com.watermelon.converter.ui.screens
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.watermelon.converter.data.files.FileKind
 import com.watermelon.converter.data.files.FileNode
-import com.watermelon.converter.ui.theme.FreshTeal
-import com.watermelon.converter.ui.theme.SlateGray
-import com.watermelon.converter.ui.theme.WatermelonRed
+import com.watermelon.converter.data.files.TypeFilter
+import com.watermelon.converter.ui.components.FileIconWithLabel
+import com.watermelon.converter.ui.components.FolderIcon
+import com.watermelon.converter.ui.components.VectorPropertiesPanel
+import com.watermelon.converter.ui.components.WatermelonLoader
+import com.watermelon.converter.ui.theme.*
 import com.watermelon.converter.util.StoragePermission
 import com.watermelon.converter.viewmodel.FileManagerViewModel
 import com.watermelon.converter.viewmodel.PreviewState
 import com.watermelon.converter.viewmodel.TreeRow
-import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private val dateFmt = SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault())
+private fun fmtDate(ms: Long) = dateFmt.format(Date(ms))
+private fun fmtSize(b: Long) = when {
+    b < 1024 -> "$b B"
+    b < 1024 * 1024 -> "%.0f KB".format(b / 1024.0)
+    else -> "%.1f MB".format(b / (1024.0 * 1024.0))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
+fun FilesScreen(
+    nav: NavController,
+    vm: FileManagerViewModel = viewModel(),
+    settingsVm: com.watermelon.converter.viewmodel.SettingsViewModel = viewModel(),
+) {
+    val settings by settingsVm.settings.collectAsState()
     val hasPermission by vm.hasPermission.collectAsState()
-    val currentDir by vm.currentDir.collectAsState()
     val rows by vm.rows.collectAsState()
     val filter by vm.filter.collectAsState()
     val marked by vm.marked.collectAsState()
@@ -63,17 +85,16 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
     val opStatus by vm.opStatus.collectAsState()
     val loading by vm.loading.collectAsState()
     val properties by vm.properties.collectAsState()
+
     var fullScreen by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var pendingMove by remember { mutableStateOf(false) } // true=move, false=copy
+    var pendingMove by remember { mutableStateOf(false) }
 
-    // Folder picker for Move/Copy destination (SAF tree).
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> if (uri != null) vm.copyOrMoveSelectedTo(uri, pendingMove) }
 
-    // Re-check permission when returning from the system Settings screen.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -88,30 +109,101 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
         return
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                if (selectionMode) {
-                    SelectionTopBar(
-                        count = selected.size,
-                        onExit = { vm.exitSelection() },
-                        onSelectAllSvg = { vm.selectAllSvg() },
-                        onSelectAllXml = { vm.selectAllXml() },
-                    )
-                } else {
-                    TopAppBar(title = { Text("Files") })
-                    SearchBar(query = query, onQueryChange = { vm.setQuery(it) })
-                    FilterBar(
-                        showSvg = filter.showSvg,
-                        showXml = filter.showXml,
-                        onChange = { svg, xml -> vm.setFilter(svg, xml) },
-                    )
-                }
-                HorizontalDivider()
+    Box(Modifier.fillMaxSize().background(OffWhite)) {
+        Column(Modifier.fillMaxSize()) {
+            // ── Header ──
+            if (selectionMode) {
+                SelectionTopBar(
+                    count = selected.size,
+                    onExit = { vm.exitSelection() },
+                    onSelectAllSvg = { vm.selectAllSvg() },
+                    onSelectAllXml = { vm.selectAllXml() },
+                )
+            } else {
+                FilesTopBar(
+                    query = query,
+                    onQueryChange = { vm.setQuery(it) },
+                    filter = filter,
+                    onFilterChange = { svg, xml -> vm.setFilter(svg, xml) },
+                )
             }
-        },
-        floatingActionButton = {
-            if (selectionMode && selected.isNotEmpty()) {
+
+            // ── Content ──
+            val showingSearch = query.isNotBlank()
+            val displayRows = if (showingSearch) searchResults.map { TreeRow(it, 0, false) } else rows
+
+            when {
+                loading -> {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        WatermelonLoader(size = 56.dp)
+                    }
+                }
+                displayRows.isEmpty() -> {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (showingSearch) "No matches found." else "No SVG or XML files here.",
+                            color = SlateGray,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(Modifier.weight(1f)) {
+                        items(displayRows, key = { it.node.file.absolutePath }) { row ->
+                            FileRow(
+                                row = row,
+                                isMarked = marked.contains(row.node.file.absolutePath),
+                                isSelected = selected.contains(row.node.file.absolutePath),
+                                selectionMode = selectionMode,
+                                onTap = {
+                                    if (row.node.isDirectory) vm.toggleDir(row.node)
+                                    else if (selectionMode) vm.toggleSelect(row.node)
+                                    else vm.preview(row.node)
+                                },
+                                onLongPress = { if (!row.node.isDirectory) vm.startSelection(row.node) },
+                                onMenuAction = { action ->
+                                    when (action) {
+                                        "rename" -> showRenameDialog = true.also { vm.startSelection(row.node) }
+                                        "delete" -> showDeleteConfirm = true.also { vm.startSelection(row.node) }
+                                        "copy" -> { vm.startSelection(row.node); pendingMove = false; folderPicker.launch(null) }
+                                        "move" -> { vm.startSelection(row.node); pendingMove = true; folderPicker.launch(null) }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── Preview pane ──
+            if (preview !is PreviewState.Empty && !selectionMode) {
+                HorizontalDivider(color = Color(0xFFE2E8F0))
+                PreviewPane(
+                    state = preview,
+                    isMarkable = previewedFile?.kind == FileKind.Svg,
+                    isMarked = previewedFile?.let { marked.contains(it.file.absolutePath) } ?: false,
+                    onToggleMark = { vm.toggleMarkPreviewed() },
+                    onExpand = { fullScreen = true },
+                    onClose = { vm.closePreview() },
+                    properties = properties,
+                    showProperties = settings.showFileProperties,
+                )
+            }
+
+            // ── Marked action bar ──
+            if (!selectionMode && marked.isNotEmpty()) {
+                MarkedBar(
+                    count = marked.size,
+                    converting = converting,
+                    onClear = { vm.clearMarks() },
+                    onConvert = { vm.convertMarked() },
+                )
+            }
+        }
+
+        // ── FAB ──
+        if (selectionMode && selected.isNotEmpty()) {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomEnd) {
                 FileOpsFab(
                     onZipShip = { vm.zipAndShipSelected() },
                     onMove = { pendingMove = true; folderPicker.launch(null) },
@@ -120,74 +212,42 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
                     onDelete = { showDeleteConfirm = true },
                 )
             }
-        },
-        bottomBar = {
-            if (!selectionMode && marked.isNotEmpty()) {
-                MarkedActionBar(
-                    count = marked.size,
-                    converting = converting,
-                    onClear = { vm.clearMarks() },
-                    onConvert = { vm.convertMarked() },
-                )
-            }
-        },
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad)) {
-            val showingSearch = query.isNotBlank()
-            val displayRows = if (showingSearch) {
-                searchResults.map { TreeRow(it, 0, false) }
-            } else rows
+        }
 
-            if (loading) {
-                Box(Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                    com.watermelon.converter.ui.components.WatermelonLoader(size = 56.dp)
-                }
-            } else if (displayRows.isEmpty()) {
-                Box(Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (showingSearch) "No matches in this folder." else "Empty folder.",
-                        color = SlateGray,
-                    )
-                }
-            } else {
-                LazyColumn(Modifier.weight(1f)) {
-                    items(displayRows, key = { it.node.file.absolutePath }) { row ->
-                        TreeRowItem(
-                            row = row,
-                            isMarked = marked.contains(row.node.file.absolutePath),
-                            isSelected = selected.contains(row.node.file.absolutePath),
-                            selectionMode = selectionMode,
-                            onTapDir = { vm.toggleDir(row.node) },
-                            onTapFile = {
-                                if (selectionMode) vm.toggleSelect(row.node)
-                                else vm.preview(row.node)
-                            },
-                            onLongPressFile = { vm.startSelection(row.node) },
-                        )
-                    }
-                }
-                if (!selectionMode && preview !is PreviewState.Empty) {
-                    HorizontalDivider()
-                    PreviewPane(
-                        state = preview,
-                        isMarkable = previewedFile?.kind == com.watermelon.converter.data.files.FileKind.Svg,
-                        isMarked = previewedFile?.let { marked.contains(it.file.absolutePath) } ?: false,
-                        onToggleMark = { vm.toggleMarkPreviewed() },
-                        onExpand = { fullScreen = true },
-                        onClose = { vm.closePreview() },
-                        properties = properties,
-                    )
+        // ── Converting overlay ──
+        if (converting) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    WatermelonLoader(size = 72.dp)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Converting…", color = PureWhite, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
     }
 
+    // ── Fullscreen preview ──
     if (fullScreen && preview !is PreviewState.Empty) {
         FullScreenPreview(state = preview, onClose = { fullScreen = false })
     }
 
+    // ── Dialogs ──
     convertResult?.let { result ->
-        ConvertResultDialog(result = result, onDismiss = { vm.dismissConvertResult() })
+        AlertDialog(
+            onDismissRequest = { vm.dismissConvertResult() },
+            title = { Text("Conversion complete") },
+            text = {
+                Column {
+                    Text("${result.succeeded} succeeded, ${result.failed} failed.")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Saved to:\n${result.savedTo}", style = MaterialTheme.typography.labelLarge, color = SlateGray)
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.dismissConvertResult() }) { Text("OK") } },
+        )
     }
 
     if (showRenameDialog) {
@@ -212,19 +272,6 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
         )
     }
 
-    if (converting) {
-        Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                com.watermelon.converter.ui.components.WatermelonLoader(size = 72.dp)
-                Spacer(Modifier.height(12.dp))
-                Text("Converting\u2026", color = Color.White)
-            }
-        }
-    }
-
     opStatus?.let { status ->
         LaunchedEffect(status) {
             kotlinx.coroutines.delay(2500)
@@ -236,282 +283,87 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Top bars
+// ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PermissionGate() {
-    val ctx = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { /* handled by ON_RESUME recheck */ }
-
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "Full storage access needed",
-                style = MaterialTheme.typography.titleLarge,
-                color = WatermelonRed,
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "The file manager browses your whole device storage so you can " +
-                    "find SVG and XML files anywhere, not just in one picked folder.",
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = { launcher.launch(StoragePermission.requestIntent(ctx)) }) {
-                Text("Grant access")
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        placeholder = { Text("Search this folder…") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-    )
-}
-
-@Composable
-private fun FilterBar(showSvg: Boolean, showXml: Boolean, onChange: (Boolean, Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Show:", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.width(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = showSvg, onCheckedChange = { onChange(it, showXml) })
-            Text("SVG")
-        }
-        Spacer(Modifier.width(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = showXml, onCheckedChange = { onChange(showSvg, it) })
-            Text("XML")
-        }
-    }
-}
-
-@Composable
-private fun MarkedActionBar(count: Int, converting: Boolean, onClear: () -> Unit, onConvert: () -> Unit) {
-    BottomAppBar {
-        Text("  $count marked", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-        TextButton(onClick = onClear, enabled = !converting) { Text("Clear") }
-        Button(onClick = onConvert, enabled = !converting, modifier = Modifier.padding(end = 12.dp)) {
-            if (converting) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                Text("Convert")
-            }
-        }
-    }
-}
-
-/**
- * Redesigned tree row: more vertical breathing room, a depth "rail" (a thin
- * colored line per nesting level instead of bare indentation) so depth reads
- * at a glance, and larger glyphs for visual hierarchy between folders/files.
- * Long-press a file to enter selection mode (for file operations); tap behavior
- * depends on whether selection mode is active.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun TreeRowItem(
-    row: TreeRow,
-    isMarked: Boolean,
-    isSelected: Boolean,
-    selectionMode: Boolean,
-    onTapDir: () -> Unit,
-    onTapFile: () -> Unit,
-    onLongPressFile: () -> Unit,
-) {
-    val node = row.node
-    val bg = when {
-        isSelected -> FreshTeal.copy(alpha = 0.22f)
-        isMarked -> WatermelonRed.copy(alpha = 0.08f)
-        else -> Color.Transparent
-    }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = { if (node.isDirectory) onTapDir() else onTapFile() },
-                onLongClick = { if (!node.isDirectory) onLongPressFile() },
-            )
-            .background(bg)
-            .padding(start = 4.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        repeat(row.depth) {
-            Box(
-                Modifier
-                    .padding(horizontal = 6.dp)
-                    .width(2.dp)
-                    .height(20.dp)
-                    .background(SlateGray.copy(alpha = 0.3f)),
-            )
-        }
-        // In selection mode, files show a checkbox; directories never selectable.
-        if (selectionMode && !node.isDirectory) {
-            Checkbox(checked = isSelected, onCheckedChange = { onTapFile() })
-            Spacer(Modifier.width(4.dp))
-        }
-        val glyph = when (node.kind) {
-            FileKind.Directory -> if (row.expanded) "\u25BC" else "\u25B6"
-            FileKind.Svg -> "\u25C6"
-            FileKind.Xml -> "\u25C7"
-            FileKind.Other -> "\u00B7"
-        }
-        val glyphColor = when (node.kind) {
-            FileKind.Directory -> FreshTeal
-            FileKind.Svg -> WatermelonRed
-            FileKind.Xml -> SlateGray
-            FileKind.Other -> SlateGray
-        }
-        Text(glyph, color = glyphColor, style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                node.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            if (!node.isDirectory) {
-                Text(
-                    humanSize(node.sizeBytes),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = SlateGray,
-                )
-            }
-        }
-        // Marked files show a red bookmark, pinned on the row. Marking happens
-        // from the preview panel, not here.
-        if (isMarked) {
-            Text("\uD83D\uDD16", style = MaterialTheme.typography.titleLarge)
-        }
-    }
-}
-
-private fun humanSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = bytes / 1024.0
-    if (kb < 1024) return String.format("%.1f KB", kb)
-    return String.format("%.2f MB", kb / 1024.0)
-}
-
-@Composable
-private fun PreviewPane(
-    state: PreviewState,
-    isMarkable: Boolean,
-    isMarked: Boolean,
-    onToggleMark: () -> Unit,
-    onExpand: () -> Unit,
-    onClose: () -> Unit,
-    properties: com.watermelon.converter.data.model.VectorProperties? = null,
+private fun FilesTopBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    filter: TypeFilter,
+    onFilterChange: (Boolean, Boolean) -> Unit,
 ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 520.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(12.dp),
+            .background(OffWhite)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when (state) {
-                    is PreviewState.SvgImage -> state.name
-                    is PreviewState.Failed -> state.name
-                    else -> "Preview"
-                },
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+        Text(
+            "Files",
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = DeepNavy,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+
+        // Search pill
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = { Text("Search files and folders", color = SlateGray) },
+            leadingIcon = { Text("⌕", fontSize = 18.sp, color = SlateGray) },
+            singleLine = true,
+            shape = RoundedCornerShape(50),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = FreshTeal,
+                unfocusedBorderColor = Color(0xFFE2E8F0),
+                focusedContainerColor = PureWhite,
+                unfocusedContainerColor = PureWhite,
+            ),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // Filter chips — SVG and XML
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilterPill(
+                label = "SVG",
+                active = filter.showSvg,
+                onClick = { onFilterChange(!filter.showSvg, filter.showXml) },
             )
-            // Bookmark = mark this file for conversion. Only SVGs are markable.
-            if (isMarkable) {
-                TextButton(onClick = onToggleMark) {
-                    Text(if (isMarked) "\uD83D\uDD16 Marked" else "\uD83D\uDD16 Mark")
-                }
-            }
-            TextButton(onClick = onExpand) { Text("Expand") }
-            TextButton(onClick = onClose) { Text("Close") }
+            FilterPill(
+                label = "XML",
+                active = filter.showXml,
+                onClick = { onFilterChange(filter.showSvg, !filter.showXml) },
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 200.dp), contentAlignment = Alignment.Center) {
-            Crossfade(targetState = state, label = "preview") { PreviewContent(it) }
-        }
-        // Properties panel — appears once analysis completes (always-visible below image).
-        if (properties != null) {
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
-            com.watermelon.converter.ui.components.VectorPropertiesPanel(properties)
-        }
+        Spacer(Modifier.height(4.dp))
     }
+    HorizontalDivider(color = Color(0xFFE2E8F0))
 }
 
 @Composable
-private fun FullScreenPreview(state: PreviewState, onClose: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
-        Surface {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Preview", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClose) { Text("Close") }
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 600.dp), contentAlignment = Alignment.Center) {
-                    PreviewContent(state)
-                }
-            }
-        }
+private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (active) FreshTeal else DeepNavy)
+            .combinedClickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = PureWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }
 
-@Composable
-private fun PreviewContent(state: PreviewState) {
-    when (state) {
-        is PreviewState.Loading -> com.watermelon.converter.ui.components.WatermelonLoader(size = 44.dp)
-        is PreviewState.SvgImage -> {
-            val bmp = remember(state.png) { BitmapFactory.decodeByteArray(state.png, 0, state.png.size) }
-            if (bmp != null) {
-                // Always white behind the vector preview, regardless of theme.
-                Box(
-                    Modifier.background(Color.White).padding(8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(bmp.asImageBitmap(), contentDescription = state.name)
-                }
-            } else Text("Could not decode preview")
-        }
-        is PreviewState.Failed -> Text(state.message, color = MaterialTheme.colorScheme.error)
-        PreviewState.Empty -> {}
-    }
-}
-
-@Composable
-private fun ConvertResultDialog(
-    result: com.watermelon.converter.viewmodel.ConvertMarkedResult,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Conversion complete") },
-        text = {
-            Column {
-                Text("${result.succeeded} succeeded, ${result.failed} failed.")
-                Spacer(Modifier.height(8.dp))
-                Text("Saved to:\n${result.savedTo}", style = MaterialTheme.typography.labelLarge)
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
-    )
-}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTopBar(
@@ -522,27 +374,180 @@ private fun SelectionTopBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     TopAppBar(
-        title = { Text("$count selected") },
+        title = { Text("$count selected", fontWeight = FontWeight.SemiBold) },
         navigationIcon = {
-            TextButton(onClick = onExit) { Text("Cancel") }
+            TextButton(onClick = onExit) { Text("Cancel", color = WatermelonRed) }
         },
         actions = {
             Box {
-                TextButton(onClick = { menuOpen = true }) { Text("Select all") }
+                TextButton(onClick = { menuOpen = true }) { Text("Select all", color = FreshTeal) }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("All SVG in folder") },
-                        onClick = { menuOpen = false; onSelectAllSvg() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("All XML in folder") },
-                        onClick = { menuOpen = false; onSelectAllXml() },
-                    )
+                    DropdownMenuItem(text = { Text("All SVG in folder") }, onClick = { menuOpen = false; onSelectAllSvg() })
+                    DropdownMenuItem(text = { Text("All XML in folder") }, onClick = { menuOpen = false; onSelectAllXml() })
                 }
             }
         },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = OffWhite),
     )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File row
+// ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FileRow(
+    row: TreeRow,
+    isMarked: Boolean,
+    isSelected: Boolean,
+    selectionMode: Boolean,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    onMenuAction: (String) -> Unit,
+) {
+    val node = row.node
+    var menuOpen by remember { mutableStateOf(false) }
+    val indentDp = (row.depth * 16).dp
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onTap, onLongClick = onLongPress)
+            .background(
+                when {
+                    isSelected -> FreshTeal.copy(alpha = 0.10f)
+                    isMarked -> WatermelonRed.copy(alpha = 0.06f)
+                    else -> Color.Transparent
+                }
+            )
+            .padding(start = 16.dp + indentDp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Selection checkbox
+        if (selectionMode && !node.isDirectory) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onTap() },
+                colors = CheckboxDefaults.colors(checkedColor = FreshTeal),
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+
+        // Icon
+        when (node.kind) {
+            FileKind.Directory -> FolderIcon(size = 44.dp)
+            FileKind.Svg -> FileIconWithLabel("SVG", FreshTeal, size = 44.dp)
+            FileKind.Xml -> FileIconWithLabel("XML", DeepNavy, size = 44.dp)
+            FileKind.Other -> FileIconWithLabel("—", SlateGray, size = 44.dp)
+        }
+
+        Spacer(Modifier.width(14.dp))
+
+        // Name + meta
+        Column(Modifier.weight(1f)) {
+            Text(
+                node.name,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = DeepNavy,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    append(fmtDate(node.lastModified))
+                    if (!node.isDirectory && node.sizeBytes > 0) {
+                        append(" • ")
+                        append(fmtSize(node.sizeBytes))
+                    }
+                },
+                fontSize = 12.sp,
+                color = SlateGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Marked checkmark (teal circle with ✓)
+        if (isMarked) {
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(FreshTeal),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✓", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Three-dot menu
+        if (!selectionMode) {
+            Spacer(Modifier.width(4.dp))
+            Box {
+                TextButton(
+                    onClick = { menuOpen = true },
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Text("⋮", fontSize = 18.sp, color = SlateGray)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (!node.isDirectory) {
+                        DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; onMenuAction("rename") })
+                        DropdownMenuItem(text = { Text("Copy") }, onClick = { menuOpen = false; onMenuAction("copy") })
+                        DropdownMenuItem(text = { Text("Move") }, onClick = { menuOpen = false; onMenuAction("move") })
+                        DropdownMenuItem(text = { Text("Delete", color = WatermelonRed) }, onClick = { menuOpen = false; onMenuAction("delete") })
+                    }
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom bars
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MarkedBar(count: Int, converting: Boolean, onClear: () -> Unit, onConvert: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(OffWhite)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "$count marked for conversion",
+            color = DeepNavy,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onClear, enabled = !converting) {
+            Text("Clear", color = SlateGray)
+        }
+        Spacer(Modifier.width(8.dp))
+        Button(
+            onClick = onConvert,
+            enabled = !converting,
+            shape = RoundedCornerShape(50),
+            colors = ButtonDefaults.buttonColors(containerColor = WatermelonRed),
+        ) {
+            if (converting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = PureWhite)
+            else Text("Convert", color = PureWhite, fontWeight = FontWeight.Bold)
+        }
+    }
+    HorizontalDivider(color = Color(0xFFE2E8F0))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAB
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun FileOpsFab(
@@ -554,23 +559,136 @@ private fun FileOpsFab(
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
-        FloatingActionButton(onClick = { open = true }) {
-            Text("\u22EE", style = MaterialTheme.typography.titleLarge) // vertical ellipsis
-        }
+        FloatingActionButton(
+            onClick = { open = true },
+            containerColor = WatermelonRed,
+            contentColor = PureWhite,
+            shape = CircleShape,
+        ) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Light) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Zip & Ship (convert)") },
-                onClick = { open = false; onZipShip() })
-            DropdownMenuItem(text = { Text("Move\u2026") },
-                onClick = { open = false; onMove() })
-            DropdownMenuItem(text = { Text("Copy\u2026") },
-                onClick = { open = false; onCopy() })
-            DropdownMenuItem(text = { Text("Rename\u2026") },
-                onClick = { open = false; onRename() })
-            DropdownMenuItem(text = { Text("Delete\u2026") },
-                onClick = { open = false; onDelete() })
+            DropdownMenuItem(text = { Text("Zip & Ship (convert)") }, onClick = { open = false; onZipShip() })
+            DropdownMenuItem(text = { Text("Move…") }, onClick = { open = false; onMove() })
+            DropdownMenuItem(text = { Text("Copy…") }, onClick = { open = false; onCopy() })
+            DropdownMenuItem(text = { Text("Rename…") }, onClick = { open = false; onRename() })
+            DropdownMenuItem(text = { Text("Delete…") }, onClick = { open = false; onDelete() })
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preview pane
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PreviewPane(
+    state: PreviewState,
+    isMarkable: Boolean,
+    isMarked: Boolean,
+    onToggleMark: () -> Unit,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+    properties: com.watermelon.converter.data.model.VectorProperties? = null,
+    showProperties: Boolean = true,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 120.dp, max = 520.dp)
+            .background(OffWhite)
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                when (state) {
+                    is PreviewState.SvgImage -> state.name
+                    is PreviewState.Failed -> state.name
+                    else -> "Preview"
+                },
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = DeepNavy,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (isMarkable) {
+                TextButton(onClick = onToggleMark) {
+                    Text(
+                        if (isMarked) "🔖 Marked" else "🔖 Mark",
+                        fontSize = 13.sp,
+                        color = if (isMarked) WatermelonRed else SlateGray,
+                    )
+                }
+            }
+            TextButton(onClick = onExpand) { Text("Expand", fontSize = 13.sp, color = FreshTeal) }
+            TextButton(onClick = onClose) { Text("Close", fontSize = 13.sp, color = SlateGray) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 200.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(targetState = state, label = "preview") { s ->
+                when (s) {
+                    is PreviewState.Loading -> WatermelonLoader(size = 44.dp)
+                    is PreviewState.SvgImage -> {
+                        val bmp = remember(s.png) { BitmapFactory.decodeByteArray(s.png, 0, s.png.size) }
+                        if (bmp != null) {
+                            Box(Modifier.background(Color.White).padding(8.dp), contentAlignment = Alignment.Center) {
+                                Image(bmp.asImageBitmap(), contentDescription = s.name)
+                            }
+                        }
+                    }
+                    is PreviewState.Failed -> Text(s.message, color = WatermelonRed, fontSize = 13.sp)
+                    PreviewState.Empty -> {}
+                }
+            }
+        }
+        if (showProperties && properties != null) {
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFFE2E8F0))
+            Spacer(Modifier.height(8.dp))
+            VectorPropertiesPanel(properties)
+        }
+    }
+}
+
+@Composable
+private fun FullScreenPreview(state: PreviewState, onClose: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Surface(shape = RoundedCornerShape(16.dp), color = OffWhite) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Preview", fontWeight = FontWeight.Bold, color = DeepNavy, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClose) { Text("Close", color = SlateGray) }
+                }
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 600.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (val s = state) {
+                        is PreviewState.SvgImage -> {
+                            val bmp = remember(s.png) { BitmapFactory.decodeByteArray(s.png, 0, s.png.size) }
+                            if (bmp != null) {
+                                Box(Modifier.background(Color.White).padding(8.dp)) {
+                                    Image(bmp.asImageBitmap(), contentDescription = s.name)
+                                }
+                            }
+                        }
+                        is PreviewState.Failed -> Text(s.message, color = WatermelonRed)
+                        else -> WatermelonLoader(size = 48.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dialogs
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
@@ -582,8 +700,7 @@ private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () 
             Column {
                 if (count > 1) {
                     Text(
-                        "The first file gets this name; the rest are numbered " +
-                            "(name, name_1, name_2\u2026). Extensions are preserved.",
+                        "First file keeps this name; the rest are numbered. Extensions are preserved.",
                         style = MaterialTheme.typography.labelLarge,
                         color = SlateGray,
                     )
@@ -594,12 +711,44 @@ private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () 
                     onValueChange = { name = it },
                     placeholder = { Text("New name (no extension)") },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (name.isNotBlank()) onConfirm(name.trim()) }) { Text("Rename") }
+            Button(
+                onClick = { if (name.isNotBlank()) onConfirm(name.trim()) },
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(containerColor = FreshTeal),
+            ) { Text("Rename") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SlateGray) } },
     )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Permission gate
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PermissionGate() {
+    val ctx = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
+    Box(Modifier.fillMaxSize().background(OffWhite).padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Storage access needed", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = DeepNavy)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "The file manager needs access to browse your storage for SVG and XML files.",
+                textAlign = TextAlign.Center,
+                color = SlateGray,
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = { launcher.launch(StoragePermission.requestIntent(ctx)) },
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(containerColor = FreshTeal),
+            ) { Text("Grant access", fontWeight = FontWeight.Bold) }
+        }
+    }
 }

@@ -5,15 +5,19 @@
 
 package com.watermelon.converter.ui
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,14 +26,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.watermelon.converter.ui.screens.FilesScreen
 import com.watermelon.converter.ui.screens.HomeScreen
 import com.watermelon.converter.ui.screens.SettingsScreen
+import com.watermelon.converter.ui.theme.DeepNavy
+import com.watermelon.converter.ui.theme.FreshTeal
+import com.watermelon.converter.ui.theme.PureWhite
 import com.watermelon.converter.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 
@@ -41,12 +46,6 @@ private val TABS = listOf(
     Tab("Settings", Icons.Filled.Settings),
 )
 
-/**
- * The three primary screens (Home, Files, Settings) as a swipeable pager with
- * a bottom navigation bar. Tabs and swipes stay in sync. The slide animation
- * is user-toggleable in Settings; when off, page changes from tab taps jump
- * without the eased scroll (swipe still works, that's inherent to a pager).
- */
 @Composable
 fun MainPager(nav: NavController, settingsVm: SettingsViewModel) {
     val settings by settingsVm.settings.collectAsState()
@@ -55,21 +54,39 @@ fun MainPager(nav: NavController, settingsVm: SettingsViewModel) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = DeepNavy,
+            ) {
                 TABS.forEachIndexed { index, tab ->
+                    val selected = pagerState.currentPage == index
                     NavigationBarItem(
-                        selected = pagerState.currentPage == index,
+                        selected = selected,
                         onClick = {
                             scope.launch {
-                                if (settings.slideAnimation) {
-                                    pagerState.animateScrollToPage(index)
-                                } else {
-                                    pagerState.scrollToPage(index)
-                                }
+                                if (settings.slideAnimation) pagerState.animateScrollToPage(index)
+                                else pagerState.scrollToPage(index)
                             }
                         },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
+                        icon = {
+                            Icon(
+                                tab.icon,
+                                contentDescription = tab.label,
+                            )
+                        },
+                        label = {
+                            Text(
+                                tab.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = FreshTeal,
+                            selectedTextColor = FreshTeal,
+                            unselectedIconColor = PureWhite.copy(alpha = 0.6f),
+                            unselectedTextColor = PureWhite.copy(alpha = 0.6f),
+                            indicatorColor = DeepNavy,  // no pill highlight — active color alone signals state
+                        ),
                     )
                 }
             }
