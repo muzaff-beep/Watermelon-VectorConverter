@@ -26,6 +26,8 @@ data class AppSettings(
     val slideAnimation: Boolean = true,
     /** SAF tree URI string for custom output destination, null = use default WvgcPaths. */
     val outputDestinationUri: String? = null,
+    /** Show the properties panel below the preview image in the file manager. */
+    val showFileProperties: Boolean = true,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -34,6 +36,7 @@ class SettingsRepository(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val SLIDE_ANIMATION = booleanPreferencesKey("slide_animation")
         val OUTPUT_DEST_URI = stringPreferencesKey("output_destination_uri")
+        val SHOW_FILE_PROPERTIES = booleanPreferencesKey("show_file_properties")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -43,6 +46,7 @@ class SettingsRepository(private val context: Context) {
                 .getOrDefault(ThemeMode.SYSTEM),
             slideAnimation = p[Keys.SLIDE_ANIMATION] ?: true,
             outputDestinationUri = p[Keys.OUTPUT_DEST_URI],
+            showFileProperties = p[Keys.SHOW_FILE_PROPERTIES] ?: true,
         )
     }
 
@@ -72,5 +76,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun clearOutputDestination() {
         context.dataStore.edit { it.remove(Keys.OUTPUT_DEST_URI) }
+    }
+
+    suspend fun setShowFileProperties(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.SHOW_FILE_PROPERTIES] = enabled }
     }
 }
