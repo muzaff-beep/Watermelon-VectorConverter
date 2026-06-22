@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
@@ -61,10 +62,14 @@ class BatchViewModel(
 
 
     private val repo = FileRepository(app.applicationContext)
+    private val settingsRepo = com.watermelon.converter.data.prefs.SettingsRepository(app.applicationContext)
     private val _state = MutableStateFlow<BatchUiState>(BatchUiState.Idle)
     val state: StateFlow<BatchUiState> = _state.asStateFlow()
 
     private var lastZip: ByteArray? = null
+
+    private suspend fun outputDestUri(): String? =
+        settingsRepo.settings.first().outputDestinationUri
 
     fun convertZip(zipUri: Uri) {
         runConvert { repo.readBytes(zipUri) }
@@ -86,6 +91,7 @@ class BatchViewModel(
         viewModelScope.launch {
             val started = System.currentTimeMillis()
             try {
+                val destUri = outputDestUri()
                 val (inputBytes, out) = withContext(Dispatchers.IO) {
                     val bytes = makeZipBytes()
                     val cb = object : ProgressCallback {
@@ -96,6 +102,13 @@ class BatchViewModel(
                     bytes.size.toLong() to native.convertZip(bytes, cb)
                 }
                 lastZip = out
+                // Write the output ZIP to the user's chosen destination.
+                withContext(Dispatchers.IO) {
+                    val fileName = "batch_${System.currentTimeMillis()}.zip"
+                    com.watermelon.converter.util.OutputDestination.write(
+                        getApplication(), out, fileName, destUri,
+                    )
+                }
                 val report = withContext(Dispatchers.IO) {
                     buildReport(out, inputBytes, System.currentTimeMillis() - started)
                 }
@@ -171,10 +184,13 @@ class BatchViewModel(
         val report = (_state.value as? BatchUiState.Done)?.report ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val dir = com.watermelon.converter.util.WvgcPaths.batchFilesDir
-                val file = java.io.File(dir, "report_${System.currentTimeMillis()}.txt")
-                file.writeText(formatReport(report))
-                _reportSaveState.value = "Report saved: ${file.name}"
+                val destUri = outputDestUri()
+                val fileName = "report_${System.currentTimeMillis()}.txt"
+                val bytes = formatReport(report).toByteArray()
+                val path = com.watermelon.converter.util.OutputDestination.write(
+                    getApplication(), bytes, fileName, destUri, mime = "text/plain",
+                )
+                _reportSaveState.value = "Report saved: ${fileName}"
             } catch (e: Exception) {
                 AppLogger.logError("BatchViewModel", "saveReport failed", e)
                 _reportSaveState.value = "Could not save report"
