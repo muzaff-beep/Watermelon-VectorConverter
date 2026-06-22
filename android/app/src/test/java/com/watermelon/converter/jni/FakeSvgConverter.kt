@@ -23,4 +23,6 @@ class FakeSvgConverter(
     override fun renderVdPreview(vdXml: String, px: Int): ByteArray =
         byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
     override fun cancel() {}
+    override fun analyzeVector(bytes: ByteArray): String =
+        """{"width":24.0,"height":24.0,"viewportW":24.0,"viewportH":24.0,"pathCount":1,"groupCount":0,"usesPaths":true,"usesGradients":false,"usesSolidColors":true,"usesStrokes":false,"singleColorTintable":true,"tintColor":"#FF000000","isAnimated":false}"""
 }
