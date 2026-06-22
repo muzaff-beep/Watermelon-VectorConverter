@@ -26,4 +26,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setPreviewPx(px: Int) = viewModelScope.launch { repo.setPreviewPx(px) }
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { repo.setThemeMode(mode) }
     fun setSlideAnimation(enabled: Boolean) = viewModelScope.launch { repo.setSlideAnimation(enabled) }
+    fun setOutputDestination(uri: android.net.Uri) = viewModelScope.launch { repo.setOutputDestination(uri) }
+    fun clearOutputDestination() = viewModelScope.launch { repo.clearOutputDestination() }
 }
