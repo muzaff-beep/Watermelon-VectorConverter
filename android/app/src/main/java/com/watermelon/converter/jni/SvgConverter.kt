@@ -13,6 +13,8 @@ interface SvgConverter {
     fun renderSvgPreview(svg: ByteArray, px: Int): ByteArray
     fun renderVdPreview(vdXml: String, px: Int): ByteArray
     fun cancel()
+    /** Analyze a vector file's structure. Returns a JSON string (Contract C-5.0). */
+    fun analyzeVector(bytes: ByteArray): String
 }
 
 /** Production implementation — calls into libsvg_converter_core.so (Contract C-3). */
@@ -25,4 +27,6 @@ object RealSvgConverter : SvgConverter {
     override fun renderVdPreview(vdXml: String, px: Int) =
         SvgConverterNative.nativeRenderVdPreview(vdXml, px)
     override fun cancel() = SvgConverterNative.nativeCancel()
+    override fun analyzeVector(bytes: ByteArray) =
+        SvgConverterNative.nativeAnalyzeVector(bytes)
 }
