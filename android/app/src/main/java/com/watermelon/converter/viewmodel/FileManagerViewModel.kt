@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -60,6 +61,10 @@ class FileManagerViewModel(
     constructor(app: Application) : this(app, RealSvgConverter)
 
     private val repo = RealFileRepository()
+    private val settingsRepo = com.watermelon.converter.data.prefs.SettingsRepository(app.applicationContext)
+
+    private suspend fun outputDestUri(): String? =
+        settingsRepo.settings.first().outputDestinationUri
 
     private val _hasPermission = MutableStateFlow(StoragePermission.isGranted())
     val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
@@ -257,9 +262,11 @@ class FileManagerViewModel(
                         }
                     }
                     val outName = "batch_${System.currentTimeMillis()}.zip"
-                    val outFile = File(WvgcPaths.batchFilesDir, outName)
-                    outFile.writeBytes(resultZip)
-                    ConvertMarkedResult(succeeded, failed, outFile)
+                    val destUri = outputDestUri()
+                    val outPath = com.watermelon.converter.util.OutputDestination.write(
+                        getApplication(), resultZip, outName, destUri,
+                    )
+                    ConvertMarkedResult(succeeded, failed, java.io.File(outPath))
                 }
                 _convertResult.value = outFile
                 MarkedFilesStore.clear()
@@ -383,9 +390,12 @@ class FileManagerViewModel(
                             }
                         }
                     }
-                    val outFile = File(WvgcPaths.batchFilesDir, "batch_${System.currentTimeMillis()}.zip")
-                    outFile.writeBytes(resultZip)
-                    ConvertMarkedResult(succeeded, failed, outFile)
+                    val outName = "batch_${System.currentTimeMillis()}.zip"
+                    val destUri = outputDestUri()
+                    val outPath = com.watermelon.converter.util.OutputDestination.write(
+                        getApplication(), resultZip, outName, destUri,
+                    )
+                    ConvertMarkedResult(succeeded, failed, java.io.File(outPath))
                 }
                 _convertResult.value = result
             } catch (e: Exception) {
@@ -472,9 +482,8 @@ class FileManagerViewModel(
         rebuild()
     }
 
-    // --- tree building -------------------------------------------------------
-
-    private fun rebuild() {
+    // --- tree building ---------------------------------------
+  private fun rebuild() {
         viewModelScope.launch {
             _loading.value = true
             val list = withContext(Dispatchers.IO) { flatten() }
