@@ -14,6 +14,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -60,6 +62,7 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
     val selected by vm.selected.collectAsState()
     val opStatus by vm.opStatus.collectAsState()
     val loading by vm.loading.collectAsState()
+    val properties by vm.properties.collectAsState()
     var fullScreen by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -172,6 +175,7 @@ fun FilesScreen(nav: NavController, vm: FileManagerViewModel = viewModel()) {
                         onToggleMark = { vm.toggleMarkPreviewed() },
                         onExpand = { fullScreen = true },
                         onClose = { vm.closePreview() },
+                        properties = properties,
                     )
                 }
             }
@@ -407,8 +411,15 @@ private fun PreviewPane(
     onToggleMark: () -> Unit,
     onExpand: () -> Unit,
     onClose: () -> Unit,
+    properties: com.watermelon.converter.data.model.VectorProperties? = null,
 ) {
-    Column(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp).padding(12.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 120.dp, max = 520.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when (state) {
@@ -431,8 +442,15 @@ private fun PreviewPane(
             TextButton(onClick = onClose) { Text("Close") }
         }
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 200.dp), contentAlignment = Alignment.Center) {
             Crossfade(targetState = state, label = "preview") { PreviewContent(it) }
+        }
+        // Properties panel — appears once analysis completes (always-visible below image).
+        if (properties != null) {
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+            com.watermelon.converter.ui.components.VectorPropertiesPanel(properties)
         }
     }
 }
