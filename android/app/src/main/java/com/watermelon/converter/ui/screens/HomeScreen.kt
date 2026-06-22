@@ -19,10 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
-import com.watermelon.converter.R
 import androidx.navigation.NavController
 import com.watermelon.converter.Routes
 import com.watermelon.converter.ui.components.WatermelonSlice
@@ -119,20 +116,9 @@ fun HomeScreen(nav: NavController) {
                 )
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
 
-            // ── Digital Raven studio mark (visual only, small) ──
-            Image(
-                painter = painterResource(id = R.drawable.digital_raven_logo),
-                contentDescription = "Digital Raven",
-                modifier = androidx.compose.ui.Modifier
-                    .size(72.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                    .clickable { nav.navigate(Routes.ABOUT) },
-                contentScale = ContentScale.Fit,
-                alpha = 0.55f,
-            )
-            Spacer(Modifier.height(8.dp))
+            // About link — logo will show here once digital_raven_logo.png is in res/drawable/
             TextButton(onClick = { nav.navigate(Routes.ABOUT) }) {
                 Text(
                     "About this app",
