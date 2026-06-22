@@ -7,7 +7,6 @@ package com.watermelon.converter.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,17 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.watermelon.converter.BuildConfig
-import com.watermelon.converter.R
 import com.watermelon.converter.ui.components.WatermelonSlice
 import com.watermelon.converter.ui.theme.*
 
@@ -62,15 +57,19 @@ fun AboutScreen(nav: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // ── Digital Raven full logo ──
-            Image(
-                painter = painterResource(id = R.drawable.digital_raven_logo),
-                contentDescription = "Digital Raven — High-Tech Solutions and Services",
-                modifier = Modifier
+            // TODO: drop digital_raven_logo.png into android/app/src/main/res/drawable/
+            // then replace this placeholder with:
+            //   Image(painterResource(R.drawable.digital_raven_logo), ...)
+            Box(
+                Modifier
                     .fillMaxWidth(0.72f)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp)),
-                contentScale = ContentScale.Fit,
-            )
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(DeepNavy),
+                contentAlignment = Alignment.Center,
+            ) {
+                com.watermelon.converter.ui.components.WatermelonSlice(size = 120.dp)
+            }
 
             Spacer(Modifier.height(32.dp))
 
@@ -127,7 +126,7 @@ fun AboutScreen(nav: NavController) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Version ${BuildConfig.VERSION_NAME}",
+                "Version ${"0.1.0"}",
                 fontSize = 13.sp,
                 color = SlateGray,
             )
