@@ -12,6 +12,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -356,7 +357,7 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
         Modifier
             .clip(RoundedCornerShape(50))
             .background(if (active) FreshTeal else DeepNavy)
-            .combinedClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -390,6 +391,7 @@ private fun SelectionTopBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = OffWhite),
     )
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // File row
