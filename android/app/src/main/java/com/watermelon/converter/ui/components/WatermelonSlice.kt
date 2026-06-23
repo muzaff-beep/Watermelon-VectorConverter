@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -21,58 +20,56 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Watermelon half-slice illustration drawn entirely with Canvas.
- * Matches the mockup: teal rind, thin white pith ring, red flesh, dark
- * teardrop seeds arranged across the flesh in two staggered rows.
+ * Watermelon half-slice — flat edge at top, rind arc curving downward,
+ * like a smile / right-side-up slice sitting on a table.
+ * Teal rind → white pith ring → red flesh → dark teardrop seeds.
  */
 @Composable
 fun WatermelonSlice(size: Dp = 200.dp, modifier: Modifier = Modifier) {
     Canvas(modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
-        // The slice sits in the lower half of the canvas — center X, bottom Y.
+        // Centre at top-centre; arc opens downward
         val cx = w / 2f
-        val cy = h * 0.94f   // anchor the flat edge near the bottom
-        val r = w * 0.48f    // outer radius
-
+        val cy = h * 0.06f   // flat edge near the top
+        val r  = w * 0.47f
         drawSlice(cx, cy, r)
     }
 }
 
 private fun DrawScope.drawSlice(cx: Float, cy: Float, r: Float) {
-    val rindColor  = Color(0xFF2A9D8F)   // FreshTeal
+    val rindColor  = Color(0xFF2A9D8F)
     val pithColor  = Color(0xFFFFFFFF)
-    val fleshColor = Color(0xFFE63946)   // WatermelonRed
-    val seedColor  = Color(0xFF1A1A2E)   // Charcoal
+    val fleshColor = Color(0xFFE63946)
+    val seedColor  = Color(0xFF1A1A2E)
 
-    val rindThick  = r * 0.09f
-    val pithThick  = r * 0.035f
+    val rindThick = r * 0.10f
+    val pithThick = r * 0.035f
 
-    // ── outer rind (semicircle) ──
+    // ── green rind: bottom semicircle (arc opens downward, 0→180) ──
     drawArc(
         color = rindColor,
-        startAngle = 180f,
+        startAngle = 0f,
         sweepAngle = 180f,
         useCenter = true,
-        topLeft = Offset(cx - r, cy - r),
+        topLeft = Offset(cx - r, cy),
         size = Size(r * 2, r * 2),
     )
-
-    // ── flat base of rind ──
+    // flat top strip of rind
     drawRect(
         color = rindColor,
-        topLeft = Offset(cx - r, cy - rindThick),
+        topLeft = Offset(cx - r, cy),
         size = Size(r * 2, rindThick),
     )
 
-    // ── white pith ring ──
+    // ── white pith ──
     val r2 = r - rindThick
     drawArc(
         color = pithColor,
-        startAngle = 180f,
+        startAngle = 0f,
         sweepAngle = 180f,
         useCenter = true,
-        topLeft = Offset(cx - r2, cy - r2),
+        topLeft = Offset(cx - r2, cy),
         size = Size(r2 * 2, r2 * 2),
     )
 
@@ -80,28 +77,27 @@ private fun DrawScope.drawSlice(cx: Float, cy: Float, r: Float) {
     val r3 = r2 - pithThick
     drawArc(
         color = fleshColor,
-        startAngle = 180f,
+        startAngle = 0f,
         sweepAngle = 180f,
         useCenter = true,
-        topLeft = Offset(cx - r3, cy - r3),
+        topLeft = Offset(cx - r3, cy),
         size = Size(r3 * 2, r3 * 2),
     )
-
-    // ── flat bottom of flesh ──
+    // flat top of flesh
     drawRect(
         color = fleshColor,
-        topLeft = Offset(cx - r3, cy - r3 * 0.08f),
-        size = Size(r3 * 2, r3 * 0.08f),
+        topLeft = Offset(cx - r3, cy),
+        size = Size(r3 * 2, r3 * 0.07f),
     )
 
-    // ── seeds: teardrop shapes arranged in two staggered rows ──
+    // ── seeds: two staggered rows, arc opens downward so seeds below cy ──
     val seedPositions = listOf(
-        // row 1 (higher up, 5 seeds)
-        Pair(-0.36f, -0.52f), Pair(-0.18f, -0.62f), Pair(0.0f, -0.66f),
-        Pair(0.18f, -0.62f), Pair(0.36f, -0.52f),
-        // row 2 (lower, 4 seeds)
-        Pair(-0.27f, -0.32f), Pair(-0.09f, -0.38f),
-        Pair(0.09f, -0.38f), Pair(0.27f, -0.32f),
+        // upper row (5 seeds, closer to flat edge)
+        Pair(-0.36f, 0.28f), Pair(-0.18f, 0.38f), Pair(0.0f, 0.42f),
+        Pair(0.18f, 0.38f),  Pair(0.36f, 0.28f),
+        // lower row (4 seeds, deeper in flesh)
+        Pair(-0.27f, 0.58f), Pair(-0.09f, 0.64f),
+        Pair(0.09f, 0.64f),  Pair(0.27f, 0.58f),
     )
 
     val seedW = r3 * 0.075f
@@ -114,27 +110,11 @@ private fun DrawScope.drawSlice(cx: Float, cy: Float, r: Float) {
     }
 }
 
-/** Draws a teardrop seed: a thin oval pointed at the top. */
-private fun DrawScope.drawSeed(
-    cx: Float, cy: Float,
-    w: Float, h: Float,
-    color: Color,
-) {
+private fun DrawScope.drawSeed(cx: Float, cy: Float, w: Float, h: Float, color: Color) {
     val path = Path().apply {
-        // Start at top point
         moveTo(cx, cy - h * 0.5f)
-        // Curve down-left to bottom
-        cubicTo(
-            cx - w * 0.6f, cy - h * 0.1f,
-            cx - w * 0.5f, cy + h * 0.3f,
-            cx, cy + h * 0.5f,
-        )
-        // Curve back up-right
-        cubicTo(
-            cx + w * 0.5f, cy + h * 0.3f,
-            cx + w * 0.6f, cy - h * 0.1f,
-            cx, cy - h * 0.5f,
-        )
+        cubicTo(cx - w * 0.6f, cy - h * 0.1f, cx - w * 0.5f, cy + h * 0.3f, cx, cy + h * 0.5f)
+        cubicTo(cx + w * 0.5f, cy + h * 0.3f, cx + w * 0.6f, cy - h * 0.1f, cx, cy - h * 0.5f)
         close()
     }
     drawPath(path, color)
