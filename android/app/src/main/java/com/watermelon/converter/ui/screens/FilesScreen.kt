@@ -110,7 +110,7 @@ fun FilesScreen(
         return
     }
 
-    Box(Modifier.fillMaxSize().background(OffWhite)) {
+    Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
             // ── Header ──
             if (selectionMode) {
@@ -299,7 +299,7 @@ private fun FilesTopBar(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(OffWhite)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
@@ -353,15 +353,27 @@ private fun FilesTopBar(
 
 @Composable
 private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
+    val border = if (active) null else androidx.compose.foundation.BorderStroke(1.5.dp, SlateGray.copy(alpha = 0.4f))
     Box(
         Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (active) FreshTeal else DeepNavy)
+            .background(if (active) FreshTeal else Color.Transparent)
+            .then(if (!active) Modifier.background(Color.Transparent) else Modifier)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = PureWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (active) {
+                Text("✓", color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                label,
+                color = if (active) PureWhite else SlateGray,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 14.sp,
+            )
+        }
     }
 }
 
@@ -388,7 +400,7 @@ private fun SelectionTopBar(
                 }
             }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = OffWhite),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background),
     )
 }
 
@@ -472,18 +484,15 @@ private fun FileRow(
             )
         }
 
-        // Marked checkmark (teal circle with ✓)
+        // Marked = red bookmark (queued for conversion).
+        // Visually distinct from selection (teal checkbox).
         if (isMarked) {
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(FreshTeal),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("✓", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "\uD83D\uDD16",
+                fontSize = 18.sp,
+                color = WatermelonRed,
+            )
         }
 
         // Three-dot menu
@@ -520,7 +529,7 @@ private fun MarkedBar(count: Int, converting: Boolean, onClear: () -> Unit, onCo
     Row(
         Modifier
             .fillMaxWidth()
-            .background(OffWhite)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -596,7 +605,7 @@ private fun PreviewPane(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 120.dp, max = 520.dp)
-            .background(OffWhite)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(12.dp),
     ) {
@@ -736,7 +745,7 @@ private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () 
 private fun PermissionGate() {
     val ctx = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
-    Box(Modifier.fillMaxSize().background(OffWhite).padding(32.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Storage access needed", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = DeepNavy)
             Spacer(Modifier.height(12.dp))
