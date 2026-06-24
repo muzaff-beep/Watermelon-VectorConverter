@@ -221,11 +221,11 @@ fun HomeScreen(nav: NavController) {
             Spacer(Modifier.height(24.dp))
 
             TextButton(onClick = { nav.navigate(Routes.HISTORY) }) {
-                Text("View history", color = DeepNavy.copy(alpha = 0.5f), fontSize = 14.sp)
+                Text("View history", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f), fontSize = 14.sp)
             }
 
             TextButton(onClick = { nav.navigate(Routes.ABOUT) }) {
-                Text("About this app", color = DeepNavy.copy(alpha = 0.4f), fontSize = 12.sp)
+                Text("About this app", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f), fontSize = 12.sp)
             }
         }
     }
