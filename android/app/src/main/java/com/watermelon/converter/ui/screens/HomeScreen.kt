@@ -7,7 +7,10 @@ package com.watermelon.converter.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,8 +27,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.watermelon.converter.Routes
+import com.watermelon.converter.R
 import com.watermelon.converter.ui.components.WatermelonLoader
-import com.watermelon.converter.ui.components.WatermelonSlice
 import com.watermelon.converter.ui.sharedGraphViewModel
 import com.watermelon.converter.ui.theme.*
 import com.watermelon.converter.viewmodel.BatchUiState
@@ -76,15 +79,22 @@ fun HomeScreen(nav: NavController) {
                     fontWeight = FontWeight.Black,
                     fontSize = 56.sp,
                     lineHeight = 60.sp,
-                    color = DeepNavy,
+                    color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                 ),
             )
 
             Spacer(Modifier.height(8.dp))
 
-            // ── Watermelon slice (right-side-up) ─────────────────────────
-            WatermelonSlice(size = 200.dp)
+            // ── Watermelon illustration (your actual SVG, rendered as PNG) ──
+            Image(
+                painter = painterResource(id = R.drawable.we_stand_with_watermelon),
+                contentDescription = "Watermelon",
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .aspectRatio(1.6f),
+                contentScale = ContentScale.Fit,
+            )
 
             Spacer(Modifier.height(48.dp))
 
