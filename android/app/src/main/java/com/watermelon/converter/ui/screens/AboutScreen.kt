@@ -52,10 +52,10 @@ fun AboutScreen(nav: NavController) {
                         Text("‹ Back", color = FreshTeal, fontSize = 16.sp)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = OffWhite),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background),
             )
         },
-        containerColor = OffWhite,
+        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
     ) { pad ->
         Column(
             Modifier
@@ -68,7 +68,7 @@ fun AboutScreen(nav: NavController) {
 
             // ── 1. Digital Raven logo ──────────────────────────────────────
             Image(
-                painter = painterResource(id = R.drawable.digital_raven_logo),
+                painter = painterResource(id = R.drawable.digital_raven_hq),
                 contentDescription = "Digital Raven — High-Tech Solutions and Services",
                 modifier = Modifier
                     .fillMaxWidth(0.78f)
