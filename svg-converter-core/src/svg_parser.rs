@@ -79,7 +79,18 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>) -> Resul
             let d = el.attribute("d")
                 .ok_or_else(|| ConversionError::InvalidSvg("<path> missing d".into()))?;
             let path_data = normalize_path_data(d)?;
-            Ok(Some(Node::Path(style_path(el, path_data, grads)?)))
+            let vd_path = style_path(el, path_data, grads)?;
+            // If the <path> itself carries a transform (common in VTracer output
+            // where every path has translate(x,y) instead of being inside a <g>),
+            // wrap it in a VdGroup so the position is preserved. Without this,
+            // every translated path lands at (0,0) and the image is scrambled.
+            if el.attribute("transform").is_some() {
+                let mut group = parse_group_transform(el);
+                group.children.push(Node::Path(vd_path));
+                Ok(Some(Node::Group(group)))
+            } else {
+                Ok(Some(Node::Path(vd_path)))
+            }
         }
         "g" => {
             let mut group = parse_group_transform(el);
