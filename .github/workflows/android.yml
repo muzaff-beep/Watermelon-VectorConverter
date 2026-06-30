@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
-# Build pipeline: Rust core (.so via cargo-ndk) + Gradle assemble + sign + test.
+# Build pipeline: Rust core (.so via cargo-ndk) + signed release APK + GitHub Release.
 name: android
 
 on:
@@ -7,6 +7,9 @@ on:
     paths: [ "android/**", "svg-converter-core/**", ".github/workflows/android.yml" ]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -33,9 +36,7 @@ jobs:
 
       - name: Build Rust core (.so for arm64-v8a)
         working-directory: svg-converter-core
-        run: |
-          cargo ndk -t arm64-v8a \
-            -o ../android/app/src/main/jniLibs build --release
+        run: cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release
 
       - name: Gradle — unit tests
         working-directory: android
@@ -59,13 +60,31 @@ jobs:
             -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
             -Pandroid.injected.signing.key.password=$KEY_PASSWORD
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: wvgc-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+      - name: Get version name
+        id: version
+        run: |
+          VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-  # Instrumented tests (real JNI + Compose UI) on an emulator.
+      - name: Create GitHub Release (Android)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ steps.version.outputs.version }}
+          name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Android"
+          body: |
+            ## Watermelon Vector Converter — Android APK
+            Signed release APK for Android (arm64-v8a).
+
+            ### Install
+            - Download `wvgc-release.apk` below
+            - Enable "Install from unknown sources" on your device
+            - Open the APK to install
+
+            ### Distribution
+            Available on Cafebazaar and Myket for Iranian users.
+          files: android/app/build/outputs/apk/release/*.apk
+          fail_on_unmatched_files: true
+
   instrumented:
     runs-on: ubuntu-latest
     steps:
