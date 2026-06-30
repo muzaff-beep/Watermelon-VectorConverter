@@ -27,13 +27,15 @@
         {
           "identifier": "main-capability",
           "description": "Main window permissions",
-          "windows": ["main"],
+          "windows": [
+            "main"
+          ],
           "permissions": [
             "core:default",
             "dialog:allow-open",
             "dialog:allow-save",
-            "fs:allow-read-files",
-            "fs:allow-write-files"
+            "fs:read-all",
+            "fs:write-all"
           ]
         }
       ]
@@ -41,7 +43,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
