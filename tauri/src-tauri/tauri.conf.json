@@ -45,7 +45,10 @@
     "active": true,
     "targets": [
       "nsis",
-      "msi"
+      "msi",
+      "appimage",
+      "deb",
+      "dmg"
     ],
     "icon": [
       "icons/32x32.png",
@@ -58,6 +61,26 @@
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
+    },
+    "linux": {
+      "appimage": {
+        "productName": "Watermelon Vector Converter",
+        "identifier": "com.watermelon.converter"
+      },
+      "deb": {
+        "productName": "Watermelon Vector Converter",
+        "identifier": "com.watermelon.converter"
+      }
+    },
+    "macos": {
+      "dmg": {
+        "productName": "Watermelon Vector Converter",
+        "identifier": "com.watermelon.converter"
+      },
+      "entitlements": null,
+      "hardenedRuntime": true,
+      "gatekeeper": null,
+      "signing": null
     }
   }
 }
