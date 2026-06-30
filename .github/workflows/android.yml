@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
-# Build pipeline: Rust core (.so via cargo-ndk) + signed release APK + GitHub Release.
+# Build pipeline: Rust core + signed universal release APK + GitHub Release.
 name: android
 
 on:
@@ -26,7 +26,7 @@ jobs:
       - name: Set up Rust + Android targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
@@ -34,9 +34,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build Rust core (.so for arm64-v8a)
+      - name: Build Rust core (all ABI targets)
         working-directory: svg-converter-core
-        run: cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -t armeabi-v7a \
+            -t x86_64 \
+            -t x86 \
+            -o ../android/app/src/main/jniLibs \
+            build --release
 
       - name: Gradle — unit tests
         working-directory: android
@@ -47,7 +54,7 @@ jobs:
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode \
             > $GITHUB_WORKSPACE/digital_raven_release.jks
 
-      - name: Gradle — assemble signed release APK
+      - name: Gradle — assemble signed universal release APK
         working-directory: android
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -66,22 +73,32 @@ jobs:
           VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release (Android)
+      - name: List APK outputs
+        run: find android/app/build/outputs/apk/release/ -name "*.apk"
+
+      - name: Create GitHub Release — Android
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v${{ steps.version.outputs.version }}
           name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Android"
           body: |
             ## Watermelon Vector Converter — Android APK
-            Signed release APK for Android (arm64-v8a).
+
+            Signed release APK. Supports all Android processor architectures:
+            - **arm64-v8a** — all modern Android phones (2016+)
+            - **armeabi-v7a** — older Android phones
+            - **x86_64** — Android emulators, some Chromebooks
+            - **x86** — older emulators
 
             ### Install
-            - Download `wvgc-release.apk` below
-            - Enable "Install from unknown sources" on your device
-            - Open the APK to install
+            1. Download `app-release.apk` below
+            2. Enable "Install from unknown sources" on your device
+            3. Open the APK to install
 
-            ### Distribution
-            Available on Cafebazaar and Myket for Iranian users.
+            ### Iranian app stores
+            Also available on **Cafebazaar** and **Myket**.
+
+            Minimum Android: 8.0 (API 26) · Target: Android 15 (API 35)
           files: android/app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: true
 
@@ -95,7 +112,7 @@ jobs:
         with: { targets: "aarch64-linux-android,x86_64-linux-android" }
       - run: cargo install cargo-ndk --locked
       - uses: android-actions/setup-android@v3
-      - name: Build Rust core incl. x86_64 (emulator ABI)
+      - name: Build Rust core (arm64 + x86_64 for emulator)
         working-directory: svg-converter-core
         run: cargo ndk -t arm64-v8a -t x86_64 -o ../android/app/src/main/jniLibs build --release
       - name: Run instrumented tests on emulator
