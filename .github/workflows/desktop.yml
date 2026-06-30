@@ -26,7 +26,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: tauri
-        run: npm ci
+        run: npm install
 
       - name: Build Tauri app (Windows)
         working-directory: tauri
