@@ -77,32 +77,8 @@ jobs:
             -name "*.AppImage" -o -name "*.deb" -o \
             -name "*.dmg" \) | sort
 
-      - name: Collect artifacts (Windows)
+      - name: Upload release (Windows)
         if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          mkdir -p /tmp/release-artifacts
-          find target/release/bundle -type f \( -name "*.exe" -o -name "*.msi" \) \
-            -exec cp {} /tmp/release-artifacts/ \;
-          ls /tmp/release-artifacts/
-
-      - name: Collect artifacts (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          mkdir -p /tmp/release-artifacts
-          find target/release/bundle -type f \( -name "*.AppImage" -o -name "*.deb" \) \
-            -exec cp {} /tmp/release-artifacts/ \;
-          ls /tmp/release-artifacts/
-
-      - name: Collect artifacts (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          mkdir -p /tmp/release-artifacts
-          find target/release/bundle -type f -name "*.dmg" \
-            -exec cp {} /tmp/release-artifacts/ \;
-          ls /tmp/release-artifacts/
-
-      - name: Create GitHub Release (${{ matrix.label }})
         uses: softprops/action-gh-release@v2
         with:
           tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
@@ -114,7 +90,53 @@ jobs:
 
             ### Install
             - **Windows**: run the `.exe` installer or `.msi`
+
+            ### Features
+            - Single SVG conversion with side-by-side preview
+            - Batch ZIP conversion with per-file progress
+            - Settings: preview resolution, dark mode
+            - Fully offline — no network requests during conversion
+          files: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          fail_on_unmatched_files: true
+
+      - name: Upload release (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
+          name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Desktop (${{ matrix.label }})"
+          body: |
+            ## Watermelon Vector Converter — Desktop (${{ matrix.label }})
+
+            Built with Tauri v2 + Svelte. Shared Rust conversion core with the Android app.
+
+            ### Install
             - **Linux**: run the `.AppImage` (no install needed) or install the `.deb`
+
+            ### Features
+            - Single SVG conversion with side-by-side preview
+            - Batch ZIP conversion with per-file progress
+            - Settings: preview resolution, dark mode
+            - Fully offline — no network requests during conversion
+          files: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+          fail_on_unmatched_files: true
+
+      - name: Upload release (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
+          name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Desktop (${{ matrix.label }})"
+          body: |
+            ## Watermelon Vector Converter — Desktop (${{ matrix.label }})
+
+            Built with Tauri v2 + Svelte. Shared Rust conversion core with the Android app.
+
+            ### Install
             - **macOS**: open the `.dmg` and drag to Applications
 
             ### Features
@@ -122,5 +144,5 @@ jobs:
             - Batch ZIP conversion with per-file progress
             - Settings: preview resolution, dark mode
             - Fully offline — no network requests during conversion
-          files: /tmp/release-artifacts/*
+          files: target/release/bundle/dmg/*.dmg
           fail_on_unmatched_files: true
