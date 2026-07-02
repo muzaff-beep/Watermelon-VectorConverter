@@ -1,10 +1,10 @@
 # Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
-# Builds Tauri desktop app for Windows, Linux, macOS + GitHub Releases.
+# Builds Tauri desktop apps (converter + viewer) for Windows, Linux, macOS + GitHub Releases.
 name: desktop
 
 on:
   push:
-    paths: [ "tauri/**", "svg-converter-core/**", ".github/workflows/desktop.yml" ]
+    paths: [ "tauri/**", "viewer/**", "svg-converter-core/**", ".github/workflows/desktop.yml" ]
   pull_request:
   workflow_dispatch:
 
@@ -51,12 +51,25 @@ jobs:
             patchelf \
             libgtk-3-dev
 
-      - name: Install frontend dependencies
+      # ── Converter ──
+      - name: Install converter frontend dependencies
         working-directory: tauri
         run: npm install
 
-      - name: Build Tauri app
+      - name: Build converter
         working-directory: tauri
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      # ── Viewer ──
+      - name: Install viewer frontend dependencies
+        working-directory: viewer
+        run: npm install
+
+      - name: Build viewer
+        working-directory: viewer
         run: npm run tauri build -- --bundles ${{ matrix.bundles }}
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -84,18 +97,14 @@ jobs:
           tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
           name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Desktop (${{ matrix.label }})"
           body: |
-            ## Watermelon Vector Converter — Desktop (${{ matrix.label }})
+            ## Watermelon Vector Converter + Viewer — Desktop (${{ matrix.label }})
 
-            Built with Tauri v2 + Svelte. Shared Rust conversion core with the Android app.
+            Two apps in this release:
+            - **Watermelon Vector Converter** — SVG → VectorDrawable conversion
+            - **Watermelon Vector Viewer** — double-click any `.svg` to preview it instantly
 
-            ### Install
-            - **Windows**: run the `.exe` installer or `.msi`
-
-            ### Features
-            - Single SVG conversion with side-by-side preview
-            - Batch ZIP conversion with per-file progress
-            - Settings: preview resolution, dark mode
-            - Fully offline — no network requests during conversion
+            Both share the same Rust conversion core. Install both from the files below;
+            the viewer registers itself as the default `.svg` handler during setup.
           files: |
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
@@ -108,18 +117,9 @@ jobs:
           tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
           name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Desktop (${{ matrix.label }})"
           body: |
-            ## Watermelon Vector Converter — Desktop (${{ matrix.label }})
+            ## Watermelon Vector Converter + Viewer — Desktop (${{ matrix.label }})
 
-            Built with Tauri v2 + Svelte. Shared Rust conversion core with the Android app.
-
-            ### Install
-            - **Linux**: run the `.AppImage` (no install needed) or install the `.deb`
-
-            ### Features
-            - Single SVG conversion with side-by-side preview
-            - Batch ZIP conversion with per-file progress
-            - Settings: preview resolution, dark mode
-            - Fully offline — no network requests during conversion
+            Two apps in this release: the converter and a lightweight SVG viewer.
           files: |
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
@@ -132,17 +132,8 @@ jobs:
           tag_name: desktop-v${{ steps.version.outputs.version }}-${{ matrix.label }}
           name: "Watermelon Vector Converter ${{ steps.version.outputs.version }} — Desktop (${{ matrix.label }})"
           body: |
-            ## Watermelon Vector Converter — Desktop (${{ matrix.label }})
+            ## Watermelon Vector Converter + Viewer — Desktop (${{ matrix.label }})
 
-            Built with Tauri v2 + Svelte. Shared Rust conversion core with the Android app.
-
-            ### Install
-            - **macOS**: open the `.dmg` and drag to Applications
-
-            ### Features
-            - Single SVG conversion with side-by-side preview
-            - Batch ZIP conversion with per-file progress
-            - Settings: preview resolution, dark mode
-            - Fully offline — no network requests during conversion
+            Two apps in this release: the converter and a lightweight SVG viewer.
           files: target/release/bundle/dmg/*.dmg
           fail_on_unmatched_files: true
