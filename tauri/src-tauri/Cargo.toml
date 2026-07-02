@@ -28,9 +28,3 @@ svg-converter-core = { path = "../../svg-converter-core" }
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
