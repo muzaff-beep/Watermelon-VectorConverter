@@ -5,7 +5,7 @@ resolver = "2"
 members = [
     "svg-converter-core",
     "tauri/src-tauri",
-    "viewer/src-tauri",  # <-- ADD THIS LINE
+    "viewer/src-tauri",
 ]
 
 [workspace.package]
