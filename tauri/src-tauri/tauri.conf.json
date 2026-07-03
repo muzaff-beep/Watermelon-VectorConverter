@@ -57,7 +57,7 @@
       }
     },
     "externalBin": [
-      "binaries/wvgc-viewer-*"
+      "binaries/wvgc-viewer"
     ]
   }
 }
