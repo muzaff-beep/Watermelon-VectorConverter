@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p tauri/src-tauri/binaries
-          cp "viewer/src-tauri/target/${{ matrix.target }}/release/wvgc-viewer${{ matrix.viewer_ext }}" \
+          cp "target/${{ matrix.target }}/release/wvgc-viewer${{ matrix.viewer_ext }}" \
              "tauri/src-tauri/binaries/wvgc-viewer-${{ matrix.target }}${{ matrix.viewer_ext }}"
 
       - name: Install converter frontend dependencies
