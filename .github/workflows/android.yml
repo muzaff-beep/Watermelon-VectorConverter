@@ -48,6 +48,10 @@ jobs:
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode \
             > $GITHUB_WORKSPACE/digital_raven_release.jks
 
+      - name: Make gradlew executable
+        working-directory: android
+        run: chmod +x ./gradlew
+
       - name: Gradle assemble signed universal release APK
         working-directory: android
         env:
@@ -106,6 +110,9 @@ jobs:
         with: { targets: "aarch64-linux-android,x86_64-linux-android" }
       - run: cargo install cargo-ndk --locked
       - uses: android-actions/setup-android@v3
+      - name: Make gradlew executable
+        working-directory: android
+        run: chmod +x ./gradlew
       - name: Build Rust core (arm64 + x86_64 for emulator)
         working-directory: svg-converter-core
         run: cargo ndk -t arm64-v8a -t x86_64 -o ../android/app/src/main/jniLibs build --release
