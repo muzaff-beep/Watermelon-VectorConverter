@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2026 Suhail Muzaffari. All rights reserved. -->
+<resources>
+    <string name="app_name">Watermelon Vector Converter</string>
+    <!-- C-4 error code messages -->
+    <string name="err_1001_invalid_svg">The SVG file could not be read or is malformed.</string>
+    <string name="err_1002_unsupported">This SVG uses a feature that isn\'t supported yet (e.g. gradient, filter, text).</string>
+    <string name="err_1003_zip_read">The ZIP archive is corrupt or unreadable.</string>
+    <string name="err_1004_zip_write">The output ZIP could not be written.</string>
+    <string name="err_1005_io">A file read/write error occurred.</string>
+    <string name="err_1006_render">The preview could not be rendered.</string>
+    <string name="err_1007_cancelled">Conversion was cancelled.</string>
+    <string name="err_1099_internal">An unexpected error occurred.</string>
+</resources>

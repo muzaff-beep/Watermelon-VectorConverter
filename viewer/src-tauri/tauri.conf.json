@@ -1,22 +1,22 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Watermelon Vector Converter",
+  "productName": "Watermelon Vector Viewer",
   "version": "0.1.0",
-  "identifier": "com.watermelon.converter",
+  "identifier": "com.watermelon.viewer",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:5174",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
-        "title": "Watermelon Vector Converter",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 800,
-        "minHeight": 560,
+        "title": "Watermelon Vector Viewer",
+        "width": 900,
+        "height": 700,
+        "minWidth": 400,
+        "minHeight": 300,
         "resizable": true,
         "fullscreen": false,
         "center": true
@@ -25,16 +25,10 @@
     "security": {
       "capabilities": [
         {
-          "identifier": "main-capability",
-          "description": "Main window permissions",
+          "identifier": "viewer-capability",
+          "description": "Viewer window permissions",
           "windows": ["main"],
-          "permissions": [
-            "core:default",
-            "dialog:allow-open",
-            "dialog:allow-save",
-            "fs:read-all",
-            "fs:write-all"
-          ]
+          "permissions": ["core:default"]
         }
       ]
     }
@@ -48,6 +42,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["svg"],
+        "name": "SVG Image",
+        "description": "Scalable Vector Graphics",
+        "role": "Viewer"
+      }
     ]
   }
 }
