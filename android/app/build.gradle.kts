@@ -84,15 +84,15 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     val jniLibsDir = file("${projectDir}/src/main/jniLibs")
     val abiDirs = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 
-    doFirst {
+    onlyIf {
         val shouldRun = abiDirs.any { abi ->
             val abiDir = file("$jniLibsDir/$abi")
             !abiDir.exists() || abiDir.listFiles()?.isEmpty() == true
         }
         if (!shouldRun) {
             println("Skipping cargo-ndk build: .so files already exist for all ABIs")
-            isEnabled = false
         }
+        shouldRun
     }
 
     commandLine(
