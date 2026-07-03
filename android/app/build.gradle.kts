@@ -1,11 +1,10 @@
-// Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
 import org.gradle.api.tasks.Exec
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")   // Kotlin 2.0+ Compose compiler
-    id("com.google.devtools.ksp")               // annotation processing
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -14,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.watermelon.converter"
-        minSdk = 26          // TODO: confirm; drives NDK ABIs + Compose baseline
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
@@ -38,18 +37,14 @@ android {
     }
 
     buildFeatures { compose = true; buildConfig = true }
-    // composeOptions block removed: Kotlin 2.0+ uses the compose plugin above
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Where cargo-ndk places the built .so files.
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 }
 
-// Kotlin compiler options live on the kotlin {} extension (Kotlin 2.0 plugin),
-// not inside android {} where the old kotlinOptions shim used to sit.
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -83,14 +78,29 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-// --- cargo-ndk hook: build the Rust core .so before packaging ---
-// Requires: rustup target aarch64-linux-android
-//           and `cargo install cargo-ndk`.
 val cargoNdkBuild by tasks.registering(Exec::class) {
     workingDir = rootDir.parentFile.resolve("svg-converter-core")
+
+    val jniLibsDir = file("${projectDir}/src/main/jniLibs")
+    val abiDirs = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+
+    doFirst {
+        val shouldRun = abiDirs.any { abi ->
+            val abiDir = file("$jniLibsDir/$abi")
+            !abiDir.exists() || abiDir.listFiles()?.isEmpty() == true
+        }
+        if (!shouldRun) {
+            println("Skipping cargo-ndk build: .so files already exist for all ABIs")
+            isEnabled = false
+        }
+    }
+
     commandLine(
         "cargo", "ndk",
         "-t", "arm64-v8a",
+        "-t", "armeabi-v7a",
+        "-t", "x86_64",
+        "-t", "x86",
         "-o", "${projectDir}/src/main/jniLibs",
         "build", "--release"
     )
