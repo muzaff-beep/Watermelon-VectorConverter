@@ -27,7 +27,9 @@
         {
           "identifier": "main-capability",
           "description": "Main window permissions",
-          "windows": ["main"],
+          "windows": [
+            "main"
+          ],
           "permissions": [
             "core:default",
             "dialog:allow-open",
@@ -48,6 +50,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer/hooks.nsi"
+      }
+    },
+    "externalBin": [
+      "binaries/wvgc-viewer"
     ]
   }
 }

@@ -106,6 +106,7 @@
 
     {#if sState === "idle"}
       <FileDropZone on:file={(e) => handleSvg(e.detail.bytes, e.detail.name)} />
+      <WatermelonButton on:click={pickSvg} label="Browse for SVG…" variant="primary" />
 
     {:else if sState === "working"}
       <ProgressBar label="Converting {sourceName}…" indeterminate />
@@ -149,6 +150,7 @@
 
     {#if bState === "idle"}
       <FileDropZone accept=".zip" on:file={(e) => handleZip(e.detail.bytes, e.detail.name)} />
+      <WatermelonButton on:click={pickZip} label="Browse for ZIP…" variant="primary" />
 
     {:else if bState === "working"}
       {#if progTotal > 0}
@@ -180,20 +182,23 @@
 <style>
   .convert-layout {
     display: flex;
-    flex-direction: column;
     gap: 0;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .panel {
-    padding: 4px 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 4px 4px 0;
   }
 
+  .panel:last-child { padding: 4px 0 4px 4px; }
+
   .divider {
-    height: 1px;
+    width: 1px;
     background: var(--border);
-    margin: 20px 0;
+    margin: 0 20px;
     flex-shrink: 0;
   }
 

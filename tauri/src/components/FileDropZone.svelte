@@ -16,18 +16,11 @@
   function onDragOver(e) { e.preventDefault(); dragOver = true; }
   function onDragLeave() { dragOver = false; }
 
-  function onClick() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = accept;
-    input.onchange = () => { if (input.files?.[0]) readFile(input.files[0]); };
-    input.click();
-  }
-
   function readFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      dispatch("file", { bytes: new Uint8Array(reader.result), name: file.name });
+      const bytes = new Uint8Array(reader.result);
+      dispatch("file", { bytes, name: file.name });
     };
     reader.readAsArrayBuffer(file);
   }
@@ -39,14 +32,12 @@
   on:drop={onDrop}
   on:dragover={onDragOver}
   on:dragleave={onDragLeave}
-  on:click={onClick}
-  role="button"
-  tabindex="0"
-  on:keydown={(e) => e.key === "Enter" && onClick()}
-  aria-label="Click or drop file"
+  role="region"
+  aria-label="Drop file here"
 >
   <span class="drop-icon">📂</span>
-  <p class="drop-label">Click or drop {accept === ".zip" ? "a ZIP" : "an SVG"}</p>
+  <p class="drop-label">Drop {accept === ".zip" ? "a ZIP" : "an SVG"} here</p>
+  <p class="drop-sub">or use the button below</p>
 </div>
 
 <style>
@@ -54,19 +45,19 @@
     border: 2px dashed var(--border);
     border-radius: var(--radius);
     background: var(--surface);
-    padding: 40px 20px;
+    padding: 36px 20px;
     text-align: center;
     margin-bottom: 14px;
     transition: border-color .2s, background .2s;
-    cursor: pointer;
+    cursor: default;
   }
 
-  .dropzone:hover,
   .dropzone.drag-over {
     border-color: var(--fresh-teal);
     background: color-mix(in srgb, var(--fresh-teal) 8%, var(--surface));
   }
 
   .drop-icon { font-size: 32px; display: block; margin-bottom: 10px; }
-  .drop-label { font-size: 14px; font-weight: 600; color: var(--text-main); }
+  .drop-label { font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 3px; }
+  .drop-sub { font-size: 12px; color: var(--text-sub); }
 </style>
