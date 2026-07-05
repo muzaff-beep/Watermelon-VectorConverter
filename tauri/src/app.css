@@ -1,4 +1,4 @@
-/* Watermelon Vector Converter — Design tokens */
+/* Watermelon Vector Converter — Design tokens (updated to match mockup) */
 :root {
   --deep-navy:      #1D3557;
   --watermelon-red: #E63946;
@@ -15,7 +15,7 @@
   --font:           "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-/* Dark mode overrides — every surface and text token re-mapped */
+/* Dark mode overrides */
 .dark {
   --off-white:      #13161A;
   --surface:        #1C2128;
@@ -24,7 +24,7 @@
   --text-main:      #E8EDF2;
   --text-sub:       #9AA5B1;
   --text-mono:      #C8D2DC;
-  --deep-navy:      #E8EDF2;  /* used for headings via var */
+  --deep-navy:      #E8EDF2;
   --slate-gray:     #9AA5B1;
 }
 
@@ -52,6 +52,45 @@ button {
 }
 
 button:focus-visible { outline: 2px solid var(--fresh-teal); outline-offset: 2px; }
+
+/* Teal convert button style (mockup match) */
+.convert-btn {
+  background: var(--fresh-teal);
+  color: white;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.convert-btn:hover {
+  background: #248f7f;
+  transform: translateY(-1px);
+}
+
+/* Drop zone style (mockup) */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 60px 40px;
+  text-align: center;
+  background: var(--surface);
+  transition: all 0.2s;
+}
+
+.drop-zone.dragover {
+  border-color: var(--fresh-teal);
+  background: rgba(42, 157, 143, 0.05);
+}
+
+/* Preview panes (mockup style) */
+.preview-pane {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
