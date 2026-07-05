@@ -1,5 +1,3 @@
-import org.gradle.api.tasks.Exec
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,37 +15,36 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
 
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = false
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary = true
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
-
-    buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 }
 
@@ -78,19 +75,23 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
+sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+
+// Improved cargo-ndk build task (fixed for CI/testing reliability)
 val cargoNdkBuild by tasks.registering(Exec::class) {
     workingDir = rootDir.parentFile.resolve("svg-converter-core")
-
     val jniLibsDir = file("${projectDir}/src/main/jniLibs")
     val abiDirs = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 
+    // Always run in CI or when libs are missing/incomplete
     onlyIf {
-        val shouldRun = abiDirs.any { abi ->
+        val isCi = System.getenv("CI") == "true"
+        val shouldRun = isCi || abiDirs.any { abi ->
             val abiDir = file("$jniLibsDir/$abi")
             !abiDir.exists() || abiDir.listFiles()?.isEmpty() == true
         }
         if (!shouldRun) {
-            println("Skipping cargo-ndk build: .so files already exist for all ABIs")
+            println("Skipping cargo-ndk build (libs exist)")
         }
         shouldRun
     }
@@ -104,5 +105,13 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
         "-o", "${projectDir}/src/main/jniLibs",
         "build", "--release"
     )
+
+    // Better error output
+    doLast {
+        if (executionResult.get().exitValue != 0) {
+            throw GradleException("cargo-ndk build failed. Check Rust/Android targets and NDK installation.")
+        }
+    }
 }
+
 tasks.named("preBuild") { dependsOn(cargoNdkBuild) }
