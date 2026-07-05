@@ -68,7 +68,7 @@ jobs:
       - name: Get version name
         id: version
         run: |
-          VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '\"[^\"]*\"' | tr -d '"')
+          VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: List APK outputs
@@ -107,15 +107,18 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: "aarch64-linux-android,x86_64-linux-android" }
+        with: { targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android" }
       - run: cargo install cargo-ndk --locked
       - uses: android-actions/setup-android@v3
       - name: Make gradlew executable
         working-directory: android
         run: chmod +x ./gradlew
-      - name: Build Rust core (arm64 + x86_64 for emulator)
+      - name: Clean previous builds
+        working-directory: android
+        run: ./gradlew clean
+      - name: Build Rust core (all 4 ABIs for reliable testing)
         working-directory: svg-converter-core
-        run: cargo ndk -t arm64-v8a -t x86_64 -o ../android/app/src/main/jniLibs build --release
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 -o ../android/app/src/main/jniLibs build --release
       - name: Run instrumented tests on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
