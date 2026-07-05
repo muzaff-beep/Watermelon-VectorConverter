@@ -97,7 +97,7 @@ jobs:
             Also available on Cafebazaar and Myket.
 
             Minimum Android: 8.0 (API 26) Target: Android 15 (API 35)
-          files: android/app/build/outputs/apk/release/*.apk
+          files: android/app/build/outputs/apk/release/app-release.apk
           fail_on_unmatched_files: true
 
   instrumented:
