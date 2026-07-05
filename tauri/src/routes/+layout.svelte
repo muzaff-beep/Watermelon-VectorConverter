@@ -1,6 +1,7 @@
 <script>
   import "../app.css";
   import Nav from "../components/Nav.svelte";
+  import AssocNoticeModal from "../components/AssocNoticeModal.svelte";
   import { settings } from "../lib/settings";
 </script>
 
@@ -16,6 +17,7 @@
       <slot />
     </main>
   </div>
+  <AssocNoticeModal />
 </div>
 
 <style>

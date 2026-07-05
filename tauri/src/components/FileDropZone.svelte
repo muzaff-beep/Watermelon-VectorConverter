@@ -1,5 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { readFile } from "@tauri-apps/plugin-fs";
   const dispatch = createEventDispatcher();
   export let accept = ".svg";
 
@@ -10,19 +12,26 @@
     dragOver = false;
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
-    readFile(file);
+    readDropped(file);
   }
 
   function onDragOver(e) { e.preventDefault(); dragOver = true; }
   function onDragLeave() { dragOver = false; }
 
-  function readFile(file) {
+  function readDropped(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      const bytes = new Uint8Array(reader.result);
-      dispatch("file", { bytes, name: file.name });
+      dispatch("file", { bytes: new Uint8Array(reader.result), name: file.name });
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  async function onClick() {
+    const ext = accept === ".zip" ? "zip" : "svg";
+    const path = await open({ filters: [{ name: ext.toUpperCase(), extensions: [ext] }], multiple: false });
+    if (!path) return;
+    const bytes = await readFile(path);
+    dispatch("file", { bytes, name: path.split(/[\\/]/).pop() });
   }
 </script>
 
@@ -32,12 +41,14 @@
   on:drop={onDrop}
   on:dragover={onDragOver}
   on:dragleave={onDragLeave}
-  role="region"
-  aria-label="Drop file here"
+  on:click={onClick}
+  role="button"
+  tabindex="0"
+  on:keydown={(e) => e.key === "Enter" && onClick()}
+  aria-label="Drop or click to choose file"
 >
   <span class="drop-icon">📂</span>
-  <p class="drop-label">Drop {accept === ".zip" ? "a ZIP" : "an SVG"} here</p>
-  <p class="drop-sub">or use the button below</p>
+  <p class="drop-label">Drop {accept === ".zip" ? "a ZIP" : "an SVG"} here or click to browse</p>
 </div>
 
 <style>
@@ -49,15 +60,15 @@
     text-align: center;
     margin-bottom: 14px;
     transition: border-color .2s, background .2s;
-    cursor: default;
+    cursor: pointer;
   }
 
+  .dropzone:hover,
   .dropzone.drag-over {
     border-color: var(--fresh-teal);
     background: color-mix(in srgb, var(--fresh-teal) 8%, var(--surface));
   }
 
   .drop-icon { font-size: 32px; display: block; margin-bottom: 10px; }
-  .drop-label { font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 3px; }
-  .drop-sub { font-size: 12px; color: var(--text-sub); }
+  .drop-label { font-size: 14px; font-weight: 600; color: var(--text-main); }
 </style>

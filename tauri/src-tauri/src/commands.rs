@@ -129,3 +129,106 @@ pub fn open_url(url: String) -> Result<(), ConversionErrorDto> {
 
     Ok(())
 }
+
+/// Register or unregister the bundled viewer as the HKCU handler for a
+/// given extension ("svg" or "xml"). No-op returning an error on non-Windows.
+#[tauri::command]
+pub fn set_file_association(ext: String, enabled: bool) -> Result<(), ConversionErrorDto> {
+    #[cfg(windows)]
+    {
+        windows_assoc::set_association(&ext, enabled)
+            .map_err(|e| ConversionErrorDto { code: 1098, message: e.to_string() })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (ext, enabled);
+        Err(ConversionErrorDto {
+            code: 1098,
+            message: "File association toggling is only supported on Windows.".into(),
+        })
+    }
+}
+
+/// Query whether the viewer is currently the HKCU handler for a given
+/// extension. Always false on non-Windows.
+#[tauri::command]
+pub fn get_file_association(ext: String) -> bool {
+    #[cfg(windows)]
+    {
+        windows_assoc::is_associated(&ext)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = ext;
+        false
+    }
+}
+
+#[cfg(windows)]
+mod windows_assoc {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    const PROG_ID: &str = "WatermelonVectorFile";
+
+    /// Registers/unregisters `WatermelonVectorFile` as the handler for
+    /// `.{ext}` under HKCU\Software\Classes, and lists it in the
+    /// OpenWithProgids key so it shows up in the Explorer "Open with" menu.
+    /// HKCU (not HKCR) is used deliberately: it requires no admin rights and
+    /// is the per-user override Explorer checks first.
+    pub fn set_association(ext: &str, enabled: bool) -> std::io::Result<()> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let classes = hkcu.open_subkey_with_flags("Software\\Classes", KEY_ALL_ACCESS)
+            .or_else(|_| hkcu.create_subkey("Software\\Classes").map(|(k, _)| k))?;
+
+        let exe_path = std::env::current_exe()?
+            .parent()
+            .map(|p| p.join("wvgc-viewer.exe"))
+            .unwrap_or_default();
+        let exe_str = exe_path.to_string_lossy().to_string();
+
+        if enabled {
+            // ProgID definition (shared across extensions, written once/idempotent).
+            let (prog_key, _) = classes.create_subkey(PROG_ID)?;
+            prog_key.set_value("", &"Watermelon Vector File")?;
+            let (icon_key, _) = prog_key.create_subkey("DefaultIcon")?;
+            icon_key.set_value("", &format!("{},0", exe_str))?;
+            let (cmd_key, _) = prog_key.create_subkey("shell\\open\\command")?;
+            cmd_key.set_value("", &format!("\"{}\" \"%1\"", exe_str))?;
+
+            // Extension -> OpenWithProgids entry (what Explorer's picker reads).
+            let ext_path = format!(".{}", ext);
+            let (ext_key, _) = classes.create_subkey(&ext_path)?;
+            let (progids_key, _) = ext_key.create_subkey("OpenWithProgids")?;
+            progids_key.set_value(PROG_ID, &"")?;
+        } else {
+            let ext_path = format!(".{}", ext);
+            if let Ok(ext_key) = classes.open_subkey_with_flags(&ext_path, KEY_ALL_ACCESS) {
+                if let Ok(progids_key) = ext_key.open_subkey_with_flags("OpenWithProgids", KEY_ALL_ACCESS) {
+                    let _ = progids_key.delete_value(PROG_ID);
+                }
+            }
+        }
+
+        // Notify Explorer so the "Open with" list refreshes without a restart.
+        unsafe {
+            #[link(name = "shell32")]
+            extern "system" {
+                fn SHChangeNotify(event_id: i32, flags: u32, item1: *const u8, item2: *const u8);
+            }
+            const SHCNE_ASSOCCHANGED: i32 = 0x08000000;
+            const SHCNF_IDLIST: u32 = 0;
+            SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, std::ptr::null(), std::ptr::null());
+        }
+
+        Ok(())
+    }
+
+    pub fn is_associated(ext: &str) -> bool {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let ext_path = format!("Software\\Classes\\.{}\\OpenWithProgids", ext);
+        hkcu.open_subkey(&ext_path)
+            .and_then(|k| k.get_raw_value(PROG_ID))
+            .is_ok()
+    }
+}

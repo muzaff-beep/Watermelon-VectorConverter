@@ -38,13 +38,6 @@
     } catch (e) { sError = e?.message ?? String(e); sState = "error"; }
   }
 
-  async function pickSvg() {
-    const path = await open({ filters: [{ name: "SVG", extensions: ["svg"] }], multiple: false });
-    if (!path) return;
-    const bytes = await readFile(path);
-    await handleSvg(bytes, path.split(/[\\\/]/).pop());
-  }
-
   async function exportSvg() {
     if (!vdXml) return;
     const path = await save({ defaultPath: sourceName.replace(/\.svg$/i, ".xml"), filters: [{ name: "VectorDrawable", extensions: ["xml"] }] });
@@ -79,13 +72,6 @@
     } catch (e) { bError = e?.message ?? String(e); bState = "error"; }
   }
 
-  async function pickZip() {
-    const path = await open({ filters: [{ name: "ZIP", extensions: ["zip"] }], multiple: false });
-    if (!path) return;
-    const bytes = await readFile(path);
-    await handleZip(bytes, path.split(/[\\\/]/).pop());
-  }
-
   async function exportZip() {
     if (!resultZip) return;
     const path = await save({ defaultPath: bSourceName.replace(/\.zip$/i, "_vectors.zip"), filters: [{ name: "ZIP", extensions: ["zip"] }] });
@@ -106,7 +92,6 @@
 
     {#if sState === "idle"}
       <FileDropZone on:file={(e) => handleSvg(e.detail.bytes, e.detail.name)} />
-      <WatermelonButton on:click={pickSvg} label="Browse for SVG…" variant="primary" />
 
     {:else if sState === "working"}
       <ProgressBar label="Converting {sourceName}…" indeterminate />
@@ -150,7 +135,6 @@
 
     {#if bState === "idle"}
       <FileDropZone accept=".zip" on:file={(e) => handleZip(e.detail.bytes, e.detail.name)} />
-      <WatermelonButton on:click={pickZip} label="Browse for ZIP…" variant="primary" />
 
     {:else if bState === "working"}
       {#if progTotal > 0}

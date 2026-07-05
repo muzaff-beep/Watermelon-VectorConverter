@@ -7,11 +7,13 @@ import { writable } from "svelte/store";
 export interface Settings {
   previewSize: number;   // px used for preview rendering
   darkMode: boolean;
+  hasSeenAssocNotice: boolean; // first-run file-association dialog shown?
 }
 
 const DEFAULTS: Settings = {
   previewSize: 400,
   darkMode: false,
+  hasSeenAssocNotice: false,
 };
 
 const STORAGE_KEY = "wvgc-settings";

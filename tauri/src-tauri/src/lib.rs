@@ -15,6 +15,8 @@ pub fn run() {
             commands::render_vd_preview,
             commands::convert_zip,
             commands::open_url,
+            commands::set_file_association,
+            commands::get_file_association,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Watermelon Vector Converter");

@@ -1,4 +1,6 @@
 <script>
+  import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { settings } from "../../lib/settings";
   import WatermelonButton from "../../components/WatermelonButton.svelte";
 
@@ -6,6 +8,32 @@
 
   function setPreviewSize(px) { settings.update((s) => ({ ...s, previewSize: px })); }
   function toggleDark()       { settings.update((s) => ({ ...s, darkMode: !s.darkMode })); }
+
+  // File association state — Windows only. null = not yet loaded / unsupported.
+  let svgAssoc = null;
+  let xmlAssoc = null;
+  let assocError = "";
+
+  onMount(async () => {
+    try {
+      svgAssoc = await invoke("get_file_association", { ext: "svg" });
+      xmlAssoc = await invoke("get_file_association", { ext: "xml" });
+    } catch {
+      // Non-Windows platform — leave as null, section stays hidden.
+    }
+  });
+
+  async function toggleAssoc(ext) {
+    const current = ext === "svg" ? svgAssoc : xmlAssoc;
+    const next = !current;
+    try {
+      await invoke("set_file_association", { ext, enabled: next });
+      if (ext === "svg") svgAssoc = next; else xmlAssoc = next;
+      assocError = "";
+    } catch (e) {
+      assocError = e?.message ?? String(e);
+    }
+  }
 </script>
 
 <section class="settings">
@@ -34,6 +62,29 @@
       <span class="toggle-label">{$settings.darkMode ? "Dark mode" : "Light mode"}</span>
     </label>
   </div>
+
+  {#if svgAssoc !== null || xmlAssoc !== null}
+    <div class="setting-group">
+      <h2 class="group-title">Default viewer (Windows)</h2>
+      <p class="group-sub">Open these file types with Watermelon Vector Viewer.</p>
+
+      <label class="toggle">
+        <input type="checkbox" checked={svgAssoc} on:change={() => toggleAssoc("svg")} />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span class="toggle-label">SVG files</span>
+      </label>
+
+      <label class="toggle" style="margin-top:12px">
+        <input type="checkbox" checked={xmlAssoc} on:change={() => toggleAssoc("xml")} />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span class="toggle-label">XML files (VectorDrawable)</span>
+      </label>
+
+      {#if assocError}
+        <p class="assoc-error">{assocError}</p>
+      {/if}
+    </div>
+  {/if}
 
   <div class="setting-group">
     <WatermelonButton on:click={() => settings.reset()} label="Reset to defaults" variant="outline" />
@@ -76,4 +127,5 @@
   }
   .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(20px); }
   .toggle-label { font-size: 14px; color: var(--text-main); font-weight: 500; }
+  .assoc-error { color: #e63946; font-size: 12px; margin-top: 10px; }
 </style>

@@ -1,20 +1,18 @@
 ; Watermelon Vector Converter — installer hook
 ; Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
 ;
-; The viewer binary itself is bundled automatically via externalBin in
-; tauri.conf.json (Tauri copies it into $INSTDIR as part of the standard
-; install step, before this hook runs). This hook only adds the .svg file
-; association pointing at the already-installed viewer binary.
-
-!macro NSIS_HOOK_POSTINSTALL
-  WriteRegStr HKCR ".svg" "" "WatermelonSvgFile"
-  WriteRegStr HKCR "WatermelonSvgFile" "" "SVG Image"
-  WriteRegStr HKCR "WatermelonSvgFile\DefaultIcon" "" "$INSTDIR\wvgc-viewer.exe,0"
-  WriteRegStr HKCR "WatermelonSvgFile\shell\open\command" "" '"$INSTDIR\wvgc-viewer.exe" "%1"'
-  System::Call 'Shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
-!macroend
+; The viewer binary is bundled via externalBin in tauri.conf.json (copied
+; into $INSTDIR automatically during the standard install step).
+;
+; File associations (.svg / .xml -> viewer) are NOT set here. Attempts to
+; inject checkboxes into the Finish page failed: Tauri's installer.nsi
+; already defines MUI_PAGE_FINISH, so installerHooks cannot redefine or
+; re-insert it (confirmed: tauri-apps/tauri#15267, #10850). Associations
+; are instead offered via a first-run dialog and toggleable anytime in the
+; app's Settings screen, both calling the same HKCU registry commands.
 
 !macro NSIS_HOOK_POSTUNINSTALL
-  DeleteRegKey HKCR ".svg"
-  DeleteRegKey HKCR "WatermelonSvgFile"
+  DeleteRegKey HKCU "Software\Classes\WatermelonVectorFile"
+  DeleteRegValue HKCU "Software\Classes\.svg\OpenWithProgids" "WatermelonVectorFile"
+  DeleteRegValue HKCU "Software\Classes\.xml\OpenWithProgids" "WatermelonVectorFile"
 !macroend
