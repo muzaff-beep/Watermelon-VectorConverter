@@ -46,6 +46,11 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // JNI native libs configuration (fixed placement inside android block)
+    sourceSets {
+        getByName("main").jniLibs.srcDirs("src/main/jniLibs")
+    }
 }
 
 dependencies {
@@ -75,15 +80,12 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
-
 // Improved cargo-ndk build task (fixed for CI/testing reliability)
 val cargoNdkBuild by tasks.registering(Exec::class) {
     workingDir = rootDir.parentFile.resolve("svg-converter-core")
     val jniLibsDir = file("${projectDir}/src/main/jniLibs")
     val abiDirs = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 
-    // Always run in CI or when libs are missing/incomplete
     onlyIf {
         val isCi = System.getenv("CI") == "true"
         val shouldRun = isCi || abiDirs.any { abi ->
@@ -106,7 +108,6 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
         "build", "--release"
     )
 
-    // Better error output
     doLast {
         if (executionResult.get().exitValue != 0) {
             throw GradleException("cargo-ndk build failed. Check Rust/Android targets and NDK installation.")
