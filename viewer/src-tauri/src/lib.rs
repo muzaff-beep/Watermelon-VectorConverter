@@ -25,6 +25,7 @@ fn extract_file_path(args: &[String]) -> Option<String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // A second launch happened — argv[1] is the new file path.
             // Push it to the existing window instead of opening a new one.
