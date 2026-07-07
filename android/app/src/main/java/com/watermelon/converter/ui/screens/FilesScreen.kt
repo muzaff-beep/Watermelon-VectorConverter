@@ -6,8 +6,6 @@
 package com.watermelon.converter.ui.screens
 
 import android.graphics.BitmapFactory
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -36,14 +34,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.watermelon.converter.data.files.FileKind
 import com.watermelon.converter.data.files.FileNode
+import com.watermelon.converter.data.files.StorageRoot
 import com.watermelon.converter.data.files.TypeFilter
-import com.watermelon.converter.data.files.VolumeNode
 import com.watermelon.converter.ui.components.FileIconWithLabel
 import com.watermelon.converter.ui.components.FolderIcon
 import com.watermelon.converter.ui.components.VectorPropertiesPanel
@@ -53,6 +52,7 @@ import com.watermelon.converter.viewmodel.FileManagerViewModel
 import com.watermelon.converter.viewmodel.PreviewState
 import com.watermelon.converter.viewmodel.RowNode
 import com.watermelon.converter.viewmodel.TreeRow
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,17 +93,9 @@ fun FilesScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var pendingMove by remember { mutableStateOf(false) }
 
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> if (uri != null) vm.copyOrMoveSelectedTo(uri, pendingMove) }
+    var showFolderChooser by remember { mutableStateOf(false) }
 
-    val pendingGrantVolumeId by vm.pendingGrantVolumeId.collectAsState()
-    val volumeGrantPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> if (uri != null) vm.onVolumeGranted(uri) else vm.dismissPendingGrant() }
-    LaunchedEffect(pendingGrantVolumeId) {
-        if (pendingGrantVolumeId != null) volumeGrantPicker.launch(null)
-    }
+    val hasPermission by vm.hasPermission.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -115,6 +107,22 @@ fun FilesScreen(
     }
 
     val currentDir by vm.currentDir.collectAsState()
+
+    if (!hasPermission) {
+        PermissionRationale(onGrant = { vm.openPermissionSettings() })
+        return
+    }
+
+    if (showFolderChooser) {
+        FolderChooserDialog(
+            storageRoots = vm.storageRoots.collectAsState().value,
+            onDismiss = { showFolderChooser = false },
+            onSelected = { dir ->
+                showFolderChooser = false
+                vm.copyOrMoveSelectedTo(dir, pendingMove)
+            },
+        )
+    }
 
     Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
@@ -133,7 +141,7 @@ fun FilesScreen(
                     filter = filter,
                     onFilterChange = { svg, xml -> vm.setFilter(svg, xml) },
                     showBack = currentDir != null,
-                    onBack = { vm.goToVolumeRoot() },
+                    onBack = { vm.goToStorageRoot() },
                 )
             }
 
@@ -154,7 +162,7 @@ fun FilesScreen(
                         Text(
                             when {
                                 showingSearch -> "No matches found."
-                                currentDir == null -> "No storage volumes found."
+                                currentDir == null -> "No storage found."
                                 else -> "No SVG or XML files here."
                             },
                             color = SlateGray,
@@ -168,16 +176,16 @@ fun FilesScreen(
                             displayRows,
                             key = { row ->
                                 when (val r = row.row) {
-                                    is RowNode.Volume -> "volume:${r.volume.volume.id}"
-                                    is RowNode.Entry -> r.node.uriString
+                                    is RowNode.Root -> "root:${r.storageRoot.root.absolutePath}"
+                                    is RowNode.Entry -> r.node.absolutePath
                                 }
                             },
                         ) { row ->
                             when (val r = row.row) {
-                                is RowNode.Volume -> {
-                                    VolumeRow(
-                                        volumeNode = r.volume,
-                                        onTap = { vm.tapVolume(r.volume) },
+                                is RowNode.Root -> {
+                                    StorageRootRow(
+                                        storageRoot = r.storageRoot,
+                                        onTap = { vm.tapRoot(r.storageRoot) },
                                     )
                                 }
                                 is RowNode.Entry -> {
@@ -185,8 +193,8 @@ fun FilesScreen(
                                     FileRow(
                                         row = row,
                                         node = node,
-                                        isMarked = marked.contains(node.uriString),
-                                        isSelected = selected.contains(node.uriString),
+                                        isMarked = marked.contains(node.absolutePath),
+                                        isSelected = selected.contains(node.absolutePath),
                                         selectionMode = selectionMode,
                                         onTap = {
                                             if (node.isDirectory) vm.toggleDir(node)
@@ -198,8 +206,8 @@ fun FilesScreen(
                                             when (action) {
                                                 "rename" -> showRenameDialog = true.also { vm.startSelection(node) }
                                                 "delete" -> showDeleteConfirm = true.also { vm.startSelection(node) }
-                                                "copy" -> { vm.startSelection(node); pendingMove = false; folderPicker.launch(null) }
-                                                "move" -> { vm.startSelection(node); pendingMove = true; folderPicker.launch(null) }
+                                                "copy" -> { vm.startSelection(node); pendingMove = false; showFolderChooser = true }
+                                                "move" -> { vm.startSelection(node); pendingMove = true; showFolderChooser = true }
                                             }
                                         },
                                     )
@@ -216,7 +224,7 @@ fun FilesScreen(
                 PreviewPane(
                     state = preview,
                     isMarkable = previewedFile?.kind == FileKind.Svg,
-                    isMarked = previewedFile?.let { marked.contains(it.uriString) } ?: false,
+                    isMarked = previewedFile?.let { marked.contains(it.absolutePath) } ?: false,
                     onToggleMark = { vm.toggleMarkPreviewed() },
                     onExpand = { fullScreen = true },
                     onClose = { vm.closePreview() },
@@ -565,8 +573,7 @@ private fun FileRow(
 }
 
 @Composable
-private fun VolumeRow(volumeNode: VolumeNode, onTap: () -> Unit) {
-    val vol = volumeNode.volume
+private fun StorageRootRow(storageRoot: StorageRoot, onTap: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -574,19 +581,14 @@ private fun VolumeRow(volumeNode: VolumeNode, onTap: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Text(
-                if (vol.isPrimary) "\uD83D\uDCF1" else "\uD83D\uDCBE", // phone = internal, SD card = external
-                fontSize = 20.sp,
-            )
-            if (volumeNode.isLocked) {
-                Text("\uD83D\uDD12", fontSize = 11.sp) // padlock overlay
-            }
-        }
+        Text(
+            if (storageRoot.isPrimary) "\uD83D\uDCF1" else "\uD83D\uDCBE", // phone = internal, SD card = external
+            fontSize = 20.sp,
+        )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                vol.label,
+                storageRoot.label,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -594,11 +596,7 @@ private fun VolumeRow(volumeNode: VolumeNode, onTap: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                when {
-                    volumeNode.isLocked -> "Tap to grant access"
-                    vol.isPrimary -> "Internal storage"
-                    else -> "External storage"
-                },
+                if (storageRoot.isPrimary) "Internal storage" else "External storage",
                 fontSize = 12.sp,
                 color = SlateGray,
             )
@@ -866,4 +864,130 @@ private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SlateGray) } },
     )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Permission rationale (MANAGE_EXTERNAL_STORAGE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PermissionRationale(onGrant: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .padding(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("\uD83D\uDCC1", fontSize = 48.sp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Storage access needed",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Watermelon Vector Converter needs full storage access to find " +
+                    "SVG and XML files anywhere on your device \u2014 internal storage " +
+                    "and any SD card \u2014 in one grant.",
+                fontSize = 14.sp,
+                color = SlateGray,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onGrant,
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(containerColor = FreshTeal),
+            ) { Text("Grant access") }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Folder chooser (destination picker for copy/move)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun FolderChooserDialog(
+    storageRoots: List<StorageRoot>,
+    onDismiss: () -> Unit,
+    onSelected: (File) -> Unit,
+) {
+    var current by remember { mutableStateOf<File?>(null) }
+    val entries = remember(current) {
+        current?.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
+            ?.sortedBy { it.name.lowercase() } ?: emptyList()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp).heightIn(max = 480.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (current != null) {
+                        TextButton(onClick = {
+                            val parent = current?.parentFile
+                            current = if (storageRoots.any { it.root.absolutePath == current?.absolutePath }) null else parent
+                        }) {
+                            Text("‹", color = FreshTeal, fontSize = 18.sp)
+                        }
+                    }
+                    Text(
+                        current?.name ?: "Choose destination",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    if (current == null) {
+                        items(storageRoots) { root ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { current = root.root }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(if (root.isPrimary) "\uD83D\uDCF1" else "\uD83D\uDCBE", fontSize = 18.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(root.label, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                    } else {
+                        items(entries) { dir ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { current = dir }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                FolderIcon(size = 18.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(dir.name, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancel", color = SlateGray) }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { current?.let(onSelected) },
+                        enabled = current != null,
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = FreshTeal),
+                    ) { Text("Select this folder") }
+                }
+            }
+        }
+    }
 }

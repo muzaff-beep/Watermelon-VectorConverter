@@ -5,26 +5,21 @@
 
 package com.watermelon.converter.data.files
 
-import androidx.documentfile.provider.DocumentFile
+import java.io.File
 
 /**
- * A node in the SAF-browsed tree. Directories are expandable; files are
- * leaves. Backed by DocumentFile so it works uniformly across the app's own
- * scoped storage and any user-granted external volume (SD card, USB-OTG).
- *
- * A DocumentFile's metadata (name/isDirectory/size/lastModified) requires a
- * content-resolver query per call on some providers, so these are captured
- * once at listing time rather than re-read from [doc] on every access.
+ * A node in the file-manager tree. Directories are expandable; files are
+ * leaves. sizeBytes/lastModified may be 0 initially (fast pass) and filled
+ * in later (deferred pass) — see RealFileRepository.withMetadata.
  */
 data class FileNode(
-    val doc: DocumentFile,
+    val file: File,
     val name: String,
     val isDirectory: Boolean,
     val sizeBytes: Long,
     val lastModified: Long,
 ) {
-    /** Stable identity for this node — used as list keys and mark/select keys. */
-    val uriString: String get() = doc.uri.toString()
+    val absolutePath: String get() = file.absolutePath
 
     val kind: FileKind get() = when {
         isDirectory -> FileKind.Directory
@@ -34,12 +29,12 @@ data class FileNode(
     }
 
     companion object {
-        fun from(doc: DocumentFile): FileNode = FileNode(
-            doc = doc,
-            name = doc.name ?: "",
-            isDirectory = doc.isDirectory,
-            sizeBytes = if (doc.isFile) doc.length() else 0L,
-            lastModified = doc.lastModified(),
+        fun from(file: File): FileNode = FileNode(
+            file = file,
+            name = file.name,
+            isDirectory = file.isDirectory,
+            sizeBytes = if (file.isFile) file.length() else 0L,
+            lastModified = file.lastModified(),
         )
     }
 }
@@ -52,9 +47,9 @@ data class TypeFilter(
     val showXml: Boolean = true,
 ) {
     fun accepts(node: FileNode): Boolean = when (node.kind) {
-        FileKind.Directory -> true          // always show dirs so the tree is navigable
+        FileKind.Directory -> true
         FileKind.Svg -> showSvg
         FileKind.Xml -> showXml
-        FileKind.Other -> false             // never show non-SVG/XML files
+        FileKind.Other -> false
     }
 }

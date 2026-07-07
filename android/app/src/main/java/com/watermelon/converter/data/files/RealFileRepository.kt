@@ -6,109 +6,104 @@
 package com.watermelon.converter.data.files
 
 import android.content.Context
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
+import android.os.Environment
 import com.watermelon.converter.logging.AppLogger
-import com.watermelon.converter.util.WvgcVolume
+import java.io.File
+
+/** A top-level storage root shown in the file manager: internal or one external volume. */
+data class StorageRoot(
+    val label: String,
+    val isPrimary: Boolean,
+    val root: File,
+)
 
 /**
- * A synthetic top-level row representing one storage volume (internal shared
- * storage, or an SD card / USB-OTG volume). Shown at the root of the file
- * tree. If [grantedTreeUri] is null the volume hasn't been granted SAF access
- * yet — the UI shows a locked row and requests the grant when tapped.
- */
-data class VolumeNode(
-    val volume: WvgcVolume,
-    val grantedTreeUri: String?,
-) {
-    val isLocked: Boolean get() = grantedTreeUri == null
-}
-
-/**
- * Real filesystem browsing via SAF (DocumentFile), uniform across the app's
- * own scoped storage and any user-granted external volume. Lazy: lists one
- * directory level at a time (expand on tap).
- *
- * There is no single java.io.File root anymore — the tree root is a virtual
- * list of volumes (see [rootNode]); entering a granted volume resolves to
- * that volume's DocumentFile tree root.
+ * Filesystem browsing via plain java.io.File, backed by MANAGE_EXTERNAL_STORAGE.
+ * One grant covers the whole device: internal shared storage + any SD card /
+ * USB-OTG volume. Lazy: lists one directory level at a time (expand on tap).
  */
 class RealFileRepository {
 
-    /**
-     * Root DocumentFile for a granted volume, or null if [grantedTreeUri] is
-     * null/invalid. This is what FileNode.doc is set to when navigating into
-     * a volume from the synthetic root.
-     */
-    fun volumeRootDoc(ctx: Context, grantedTreeUri: String): DocumentFile? =
+    /** Internal shared storage + any detected external (SD card / USB) volumes. */
+    fun storageRoots(ctx: Context): List<StorageRoot> {
+        val roots = ArrayList<StorageRoot>()
+        roots.add(StorageRoot("Internal Storage", isPrimary = true, root = Environment.getExternalStorageDirectory()))
         try {
-            DocumentFile.fromTreeUri(ctx, Uri.parse(grantedTreeUri))
-        } catch (e: Exception) {
-            AppLogger.logError("RealFileRepository", "failed to resolve volume root", e)
-            null
-        }
-
-    fun listChildren(dir: DocumentFile): List<FileNode> {
-        val out = ArrayList<FileNode>()
-        try {
-            for (doc in dir.listFiles()) {
-                val name = doc.name ?: continue
-                if (name.startsWith(".")) continue // keep the tree usable
-                out.add(FileNode.from(doc))
+            val dirs = ctx.getExternalFilesDirs(null)
+            for (dir in dirs) {
+                if (dir == null) continue
+                // getExternalFilesDirs returns .../Android/data/<pkg>/files per volume;
+                // walk up to the volume root.
+                var vol = dir
+                repeat(4) { vol = vol.parentFile ?: vol }
+                if (vol.absolutePath == roots[0].root.absolutePath) return@repeat
+                if (roots.none { it.root.absolutePath == vol.absolutePath }) {
+                    roots.add(StorageRoot("SD Card", isPrimary = false, root = vol))
+                }
             }
-        } catch (e: SecurityException) {
-            AppLogger.logError("RealFileRepository", "permission denied listing ${dir.uri}", e)
         } catch (e: Exception) {
-            AppLogger.logError("RealFileRepository", "listChildren failed for ${dir.uri}", e)
+            AppLogger.logError("RealFileRepository", "external volume detection failed", e)
+        }
+        return roots
+    }
+
+    /**
+     * Fast pass: names + extension only, no size/date. Used for the initial
+     * render so the list appears immediately.
+     */
+    fun listChildrenFast(dir: File): List<FileNode> {
+        val out = ArrayList<FileNode>()
+        val children = dir.listFiles() ?: return out
+        for (f in children) {
+            val name = f.name
+            if (name.startsWith(".")) continue
+            out.add(FileNode(file = f, name = name, isDirectory = f.isDirectory, sizeBytes = 0L, lastModified = 0L))
         }
         out.sortWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
         return out
     }
 
-    /**
-     * Recursive search within [root] (current folder + subfolders), matching
-     * [query] case-insensitively against file/dir names. Bounded by [maxResults]
-     * so a huge tree can't hang the UI.
-     */
-    fun search(root: DocumentFile, query: String, maxResults: Int = 200): List<FileNode> {
+    /** Deferred pass: fills in size + lastModified for already-listed nodes. */
+    fun withMetadata(node: FileNode): FileNode {
+        val f = node.file
+        return node.copy(
+            sizeBytes = if (f.isFile) f.length() else 0L,
+            lastModified = f.lastModified(),
+        )
+    }
+
+    fun search(root: File, query: String, maxResults: Int = 200): List<FileNode> {
         if (query.isBlank()) return emptyList()
         val q = query.trim().lowercase()
         val out = ArrayList<FileNode>()
-        fun walk(dir: DocumentFile) {
+        fun walk(dir: File) {
             if (out.size >= maxResults) return
-            val children = try { dir.listFiles() } catch (e: SecurityException) { return } catch (e: Exception) { return }
-            for (doc in children) {
+            val children = dir.listFiles() ?: return
+            for (f in children) {
                 if (out.size >= maxResults) return
-                val name = doc.name ?: continue
-                if (name.startsWith(".")) continue
-                if (name.lowercase().contains(q)) out.add(FileNode.from(doc))
-                if (doc.isDirectory) walk(doc)
+                if (f.name.startsWith(".")) continue
+                if (f.name.lowercase().contains(q)) out.add(FileNode.from(f))
+                if (f.isDirectory) walk(f)
             }
         }
         walk(root)
         return out
     }
 
-    // --- folder filtering -----------------------------------------
-
-    /**
-     * Whether [dir] contains at least one file (at any depth, bounded) matching
-     * the active type filter. Used to hide folders that have no SVG/XML so the
-     * tree only shows relevant directories. Bounded depth keeps it responsive.
-     */
-    fun containsMatching(dir: DocumentFile, filter: TypeFilter, maxDepth: Int = 6): Boolean {
-        fun walk(d: DocumentFile, depth: Int): Boolean {
+    /** Whether [dir] contains a matching SVG/XML at any depth (bounded). */
+    fun containsMatching(dir: File, filter: TypeFilter, maxDepth: Int = 6): Boolean {
+        fun walk(d: File, depth: Int): Boolean {
             if (depth > maxDepth) return false
-            val children = try { d.listFiles() } catch (e: SecurityException) { return false } catch (e: Exception) { return false }
-            for (doc in children) {
-                val name = doc.name ?: continue
+            val children = d.listFiles() ?: return false
+            for (f in children) {
+                val name = f.name
                 if (name.startsWith(".")) continue
-                if (doc.isFile) {
+                if (f.isFile) {
                     val isSvg = name.endsWith(".svg", true)
                     val isXml = name.endsWith(".xml", true)
                     if ((isSvg && filter.showSvg) || (isXml && filter.showXml)) return true
-                } else if (doc.isDirectory) {
-                    if (walk(doc, depth + 1)) return true
+                } else if (f.isDirectory) {
+                    if (walk(f, depth + 1)) return true
                 }
             }
             return false
@@ -116,82 +111,63 @@ class RealFileRepository {
         return walk(dir, 0)
     }
 
-    // --- select-all ------------------------------------------------
-
-    /**
-     * All files directly within [dir] (one level) matching the active filter.
-     * Used by "select all SVG" / "select all XML" actions.
-     */
-    fun matchingFilesIn(dir: DocumentFile, filter: TypeFilter): List<DocumentFile> {
-        val children = try { dir.listFiles() } catch (e: SecurityException) { return emptyList() } catch (e: Exception) { return emptyList() }
-        return children.filter { doc ->
-            val name = doc.name ?: return@filter false
-            doc.isFile && !name.startsWith(".") && run {
-                val isSvg = name.endsWith(".svg", true)
-                val isXml = name.endsWith(".xml", true)
+    fun matchingFilesIn(dir: File, filter: TypeFilter): List<File> {
+        val children = dir.listFiles() ?: return emptyList()
+        return children.filter { f ->
+            f.isFile && !f.name.startsWith(".") && run {
+                val isSvg = f.name.endsWith(".svg", true)
+                val isXml = f.name.endsWith(".xml", true)
                 (isSvg && filter.showSvg) || (isXml && filter.showXml)
             }
         }
     }
 
-    // --- file operations (DocumentFile-to-DocumentFile) ---------------------
-
-    /** Delete files (and empty dirs). Returns count actually deleted. */
-    fun delete(files: List<DocumentFile>): Int {
+    fun delete(files: List<File>): Int {
         var n = 0
         for (f in files) {
             try {
                 if (f.delete()) n++
             } catch (e: Exception) {
-                AppLogger.logError("RealFileRepository", "delete failed for ${f.uri}", e)
+                AppLogger.logError("RealFileRepository", "delete failed for ${f.path}", e)
             }
         }
         return n
     }
 
-    /** Rename a single file to [newName] (name only, same parent dir). */
-    fun rename(file: DocumentFile, newName: String): DocumentFile? {
+    fun rename(file: File, newName: String): File? {
         return try {
-            if (file.renameTo(newName)) file else null
+            val target = File(file.parentFile, newName)
+            if (file.renameTo(target)) target else null
         } catch (e: Exception) {
-            AppLogger.logError("RealFileRepository", "rename failed for ${file.uri}", e)
+            AppLogger.logError("RealFileRepository", "rename failed for ${file.path}", e)
             null
         }
     }
 
-    /** Copy a file into [destDir]. Returns the new DocumentFile. */
-    fun copyInto(ctx: Context, src: DocumentFile, destDir: DocumentFile): DocumentFile? {
+    fun copyInto(src: File, destDir: File): File? {
         return try {
-            val name = src.name ?: return null
-            val mime = src.type ?: "application/octet-stream"
-            val target = uniqueTarget(destDir, name)
-            val created = destDir.createFile(mime, target) ?: return null
-            ctx.contentResolver.openInputStream(src.uri)?.use { input ->
-                ctx.contentResolver.openOutputStream(created.uri)?.use { output ->
-                    input.copyTo(output)
-                } ?: return null
-            } ?: return null
-            created
+            val target = uniqueTarget(destDir, src.name)
+            val out = File(destDir, target)
+            src.copyTo(out, overwrite = false)
+            out
         } catch (e: Exception) {
-            AppLogger.logError("RealFileRepository", "copy failed for ${src.uri}", e)
+            AppLogger.logError("RealFileRepository", "copy failed for ${src.path}", e)
             null
         }
     }
 
-    /** Move a file into [destDir] (copy then delete source — SAF has no cross-tree rename). */
-    fun moveInto(ctx: Context, src: DocumentFile, destDir: DocumentFile): DocumentFile? {
-        val copied = copyInto(ctx, src, destDir) ?: return null
+    fun moveInto(src: File, destDir: File): File? {
+        val copied = copyInto(src, destDir) ?: return null
         try {
             src.delete()
         } catch (e: Exception) {
-            AppLogger.logError("RealFileRepository", "source delete failed after move for ${src.uri}", e)
+            AppLogger.logError("RealFileRepository", "source delete failed after move for ${src.path}", e)
         }
         return copied
     }
 
-    /** Disambiguate a target name if it already exists (file.svg -> file_1.svg). */
-    private fun uniqueTarget(destDir: DocumentFile, name: String): String {
-        if (destDir.findFile(name) == null) return name
+    private fun uniqueTarget(destDir: File, name: String): String {
+        if (!File(destDir, name).exists()) return name
         val base = name.substringBeforeLast('.', name)
         val ext = name.substringAfterLast('.', "")
         var i = 1
@@ -199,7 +175,7 @@ class RealFileRepository {
         do {
             candidate = if (ext.isEmpty()) "${base}_$i" else "${base}_$i.$ext"
             i++
-        } while (destDir.findFile(candidate) != null)
+        } while (File(destDir, candidate).exists())
         return candidate
     }
 }

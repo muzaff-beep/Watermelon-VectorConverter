@@ -8,6 +8,8 @@
          normal runtime dialog exists for it), and Play Store distribution
          requires the app's core purpose to be file management to qualify.
          Used here for personal/sideload builds per project decision. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <application
         android:name=".WvgcApp"
