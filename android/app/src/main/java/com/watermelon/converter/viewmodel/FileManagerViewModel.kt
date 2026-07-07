@@ -451,8 +451,7 @@ class FileManagerViewModel(
     fun dismissOpStatus() { _opStatus.value = null }
 
     // --- Phase 1: file operations -------------------------------------------
-
-    /** Zip & ship: zip the selected SVGs, convert, write to Batch_files. */
+/** Zip & ship: zip the selected SVGs, convert, write to Batch_files. */
     fun zipAndShipSelected() {
         val ctx = getApplication<Application>()
         val files = selectedNodes().map { it.doc }.filter { (it.name ?: "").endsWith(".svg", true) }
@@ -469,4 +468,151 @@ class FileManagerViewModel(
                     val resultZip = native.convertZip(zipBytes, object : com.watermelon.converter.jni.ProgressCallback {
                         override fun onProgress(done: Int, total: Int, currentName: String) {}
                     })
-  
+                    var succeeded = 0; var failed = 0
+                    java.util.zip.ZipInputStream(resultZip.inputStream()).use { zis ->
+                        while (true) {
+                            val e = zis.nextEntry ?: break
+                            val content = zis.readBytes()
+                            if (e.name.endsWith(".error.txt")) {
+                                failed++
+                                val src = e.name.removeSuffix(".error.txt")
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    src, "", ok = false, error = String(content).trim()
+                                )
+                            } else {
+                                succeeded++
+                                com.watermelon.converter.data.model.HistoryStore.add(
+                                    e.name, String(content), ok = true
+                                )
+                            }
+                        }
+                    }
+                    val outName = "batch_${System.currentTimeMillis()}.zip"
+                    val destUri = outputDestUri()
+                    com.watermelon.converter.util.OutputDestination.write(
+                        getApplication(), resultZip, outName, destUri,
+                    )
+                    val savedTo = com.watermelon.converter.util.OutputDestination
+                        .displayLabel(getApplication(), destUri) + "/" + outName
+                    ConvertMarkedResult(succeeded, failed, savedTo)
+                }
+                _convertResult.value = result
+            } catch (e: Exception) {
+                AppLogger.logError("FileManager", "zipAndShipSelected failed", e)
+                _opStatus.value = "Conversion failed"
+            } finally {
+                _converting.value = false
+            }
+        }
+    }
+
+    /** Delete the selected files. */
+    fun deleteSelected() {
+        val files = selectedNodes().map { it.doc }
+        if (files.isEmpty()) return
+        viewModelScope.launch {
+            val n = withContext(Dispatchers.IO) { repo.delete(files) }
+            invalidateAndRebuild()
+            exitSelection()
+            _opStatus.value = "Deleted $n file${if (n == 1) "" else "s"}"
+        }
+    }
+
+    /**
+     * Rename selected files. The first keeps [baseName]; the rest are numbered
+     * baseName_1, baseName_2, … preserving each file's original extension.
+     */
+    fun renameSelected(baseName: String) {
+        val files = selectedNodes().map { it.doc }
+        if (files.isEmpty() || baseName.isBlank()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                files.forEachIndexed { i, f ->
+                    val name = f.name ?: return@forEachIndexed
+                    val ext = name.substringAfterLast('.', "")
+                    val stem = if (i == 0) baseName else "${baseName}_$i"
+                    val newName = if (ext.isEmpty()) stem else "$stem.$ext"
+                    repo.rename(f, newName)
+                }
+            }
+            invalidateAndRebuild()
+            exitSelection()
+            _opStatus.value = "Renamed ${files.size} file${if (files.size == 1) "" else "s"}"
+        }
+    }
+
+    /**
+     * Copy or move selected files into a SAF-picked destination tree.
+     */
+    fun copyOrMoveSelectedTo(treeUri: Uri, move: Boolean) {
+        val files = selectedNodes().map { it.doc }
+        if (files.isEmpty()) return
+        viewModelScope.launch {
+            val n = withContext(Dispatchers.IO) {
+                var count = 0
+                val ctx = getApplication<Application>()
+                val destDir = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@withContext 0
+                for (f in files) {
+                    val result = if (move) repo.moveInto(ctx, f, destDir) else repo.copyInto(ctx, f, destDir)
+                    if (result != null) count++
+                }
+                count
+            }
+            if (move) invalidateAndRebuild()
+            exitSelection()
+            _opStatus.value = "${if (move) "Moved" else "Copied"} $n file${if (n == 1) "" else "s"}"
+        }
+    }
+
+    private fun invalidateAndRebuild() {
+        // A real filesystem change (delete/rename/move/copy) happened — drop the
+        // caches so the affected folders re-scan, and show the spinner because
+        // this is a genuine reload, not a view change.
+        childrenCache.clear()
+        containsCache.clear()
+        rebuild(showLoading = true)
+    }
+
+    // --- tree building -------------------------------------------------------
+
+    private fun rebuild(showLoading: Boolean = true) {
+        viewModelScope.launch {
+            if (showLoading) _loading.value = true
+            val list = withContext(Dispatchers.IO) { flatten() }
+            _rows.value = list
+            if (showLoading) _loading.value = false
+        }
+    }
+
+    private fun flatten(): List<TreeRow> {
+        val dir = _currentDir.value
+        if (dir == null) {
+            // Synthetic root: list volumes, no recursion.
+            return _volumes.value.map { TreeRow(RowNode.Volume(it), depth = 0, expanded = false) }
+        }
+        val out = ArrayList<TreeRow>()
+        val filter = _filter.value
+        fun walk(d: DocumentFile, depth: Int) {
+            val cacheKey = d.uri.toString()
+            val kids = childrenCache.getOrPut(cacheKey) { repo.listChildren(d) }
+            for (node in kids) {
+                if (node.isDirectory) {
+                    // Only show folders that contain matching SVG/XML somewhere inside.
+                    // Memoized so expand/collapse doesn't re-scan the subtree.
+                    val matches = containsCache.getOrPut(node.uriString) {
+                        repo.containsMatching(node.doc, filter)
+                    }
+                    if (!matches) continue
+                    val isExp = expanded.contains(node.uriString)
+                    out.add(TreeRow(RowNode.Entry(node), depth, isExp))
+                    if (isExp) walk(node.doc, depth + 1)
+                } else {
+                    // Files: show only those matching the active type filter.
+                    if (filter.accepts(node)) out.add(TreeRow(RowNode.Entry(node), depth, false))
+                }
+            }
+        }
+        walk(dir, 0)
+        return out
+    }
+}
