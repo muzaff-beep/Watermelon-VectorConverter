@@ -6,6 +6,8 @@
 package com.watermelon.converter.viewmodel
 
 import android.app.Application
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.watermelon.converter.data.files.FileKind
@@ -13,11 +15,12 @@ import com.watermelon.converter.data.files.FileNode
 import com.watermelon.converter.data.files.MarkedFilesStore
 import com.watermelon.converter.data.files.RealFileRepository
 import com.watermelon.converter.data.files.TypeFilter
+import com.watermelon.converter.data.files.VolumeNode
+import com.watermelon.converter.data.prefs.SettingsRepository
 import com.watermelon.converter.jni.RealSvgConverter
 import com.watermelon.converter.jni.SvgConverter
 import com.watermelon.converter.logging.AppLogger
-import com.watermelon.converter.util.StoragePermission
-import com.watermelon.converter.util.WvgcPaths
+import com.watermelon.converter.util.StorageVolumes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,13 +30,18 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+/** A row of the tree: either a top-level storage volume, or a file/folder entry. */
+sealed interface RowNode {
+    data class Volume(val volume: VolumeNode) : RowNode
+    data class Entry(val node: FileNode) : RowNode
+}
+
 /** A row in the flattened, indented tree view. */
 data class TreeRow(
-    val node: FileNode,
+    val row: RowNode,
     val depth: Int,
     val expanded: Boolean,
 )
@@ -62,16 +70,26 @@ class FileManagerViewModel(
     constructor(app: Application) : this(app, RealSvgConverter)
 
     private val repo = RealFileRepository()
-    private val settingsRepo = com.watermelon.converter.data.prefs.SettingsRepository(app.applicationContext)
+    private val settingsRepo = SettingsRepository(app.applicationContext)
 
     private suspend fun outputDestUri(): String? =
         settingsRepo.settings.first().outputDestinationUri
 
-    private val _hasPermission = MutableStateFlow(StoragePermission.isGranted())
-    val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
+    // --- volume tree (root) --------------------------------------------------
 
-    private val _currentDir = MutableStateFlow(repo.defaultRoot(getApplication()))
-    val currentDir: StateFlow<File> = _currentDir.asStateFlow()
+    /**
+     * null = at the synthetic root (volume list shown).
+     * non-null = browsing inside a granted volume's DocumentFile tree.
+     */
+    private val _currentDir = MutableStateFlow<DocumentFile?>(null)
+    val currentDir: StateFlow<DocumentFile?> = _currentDir.asStateFlow()
+
+    private val _volumes = MutableStateFlow<List<VolumeNode>>(emptyList())
+    val volumes: StateFlow<List<VolumeNode>> = _volumes.asStateFlow()
+
+    /** Volume id awaiting a SAF grant — UI observes this to launch the picker. */
+    private val _pendingGrantVolumeId = MutableStateFlow<String?>(null)
+    val pendingGrantVolumeId: StateFlow<String?> = _pendingGrantVolumeId.asStateFlow()
 
     private val _filter = MutableStateFlow(TypeFilter())
     val filter: StateFlow<TypeFilter> = _filter.asStateFlow()
@@ -109,7 +127,7 @@ class FileManagerViewModel(
     private val _selectionMode = MutableStateFlow(false)
     val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
 
-    private val _selected = MutableStateFlow<Set<String>>(emptySet()) // absolute paths
+    private val _selected = MutableStateFlow<Set<String>>(emptySet()) // uri strings
     val selected: StateFlow<Set<String>> = _selected.asStateFlow()
 
     /** Transient status text after a file op (e.g. "Copied 3 files"). */
@@ -120,21 +138,80 @@ class FileManagerViewModel(
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    private val expanded = LinkedHashSet<String>()      // absolute paths
+    private val expanded = LinkedHashSet<String>()      // uri strings
     private val childrenCache = HashMap<String, List<FileNode>>()
     // Memoizes containsMatching() per directory so expand/collapse and re-render
-    // don't repeat the recursive disk scan. Keyed by dir path; cleared when the
+    // don't repeat the recursive disk scan. Keyed by uri string; cleared when the
     // filter changes (affects what "matching" means) or files change on disk.
     private val containsCache = HashMap<String, Boolean>()
 
+    // Cache resolved DocumentFile roots for granted volumes, keyed by volume id,
+    // so re-entering a volume doesn't re-resolve the tree URI every time.
+    private val volumeRootCache = HashMap<String, DocumentFile>()
+
     init {
-        // App-scoped storage requires no permission — always accessible.
-        WvgcPaths.ensureDirs(getApplication())
-        rebuild()
+        refreshVolumes()
     }
 
-    /** No-op: permission no longer required for app-scoped storage. */
-    fun recheckPermission() { /* no-op */ }
+    /** Rebuild the volume list from StorageManager + current SAF grants. */
+    private fun refreshVolumes() {
+        viewModelScope.launch {
+            val grants = settingsRepo.settings.first().volumeGrants
+            val vols = withContext(Dispatchers.IO) { StorageVolumes.list(getApplication()) }
+            _volumes.value = vols.map { v -> VolumeNode(volume = v, grantedTreeUri = grants[v.id]) }
+            if (_currentDir.value == null) rebuild(showLoading = false)
+        }
+    }
+
+    /** No-op retained for lifecycle call-site compatibility. */
+    fun recheckPermission() { refreshVolumes() }
+
+    /**
+     * Tap on a volume row. If granted, navigate into it; if locked, request
+     * the SAF grant — the UI observes [pendingGrantVolumeId] and launches the
+     * system folder picker, then calls [onVolumeGranted] with the result.
+     */
+    fun tapVolume(volume: VolumeNode) {
+        val uri = volume.grantedTreeUri
+        if (uri == null) {
+            _pendingGrantVolumeId.value = volume.volume.id
+            return
+        }
+        enterVolume(volume.volume.id, uri)
+    }
+
+    private fun enterVolume(volumeId: String, treeUri: String) {
+        val root = volumeRootCache.getOrPut(volumeId) {
+            repo.volumeRootDoc(getApplication(), treeUri) ?: return
+        }
+        childrenCache.clear()
+        containsCache.clear()
+        expanded.clear()
+        _currentDir.value = root
+        rebuild(showLoading = true)
+    }
+
+    /** Called by the UI after the SAF folder picker returns a tree URI. */
+    fun onVolumeGranted(treeUri: Uri) {
+        val volumeId = _pendingGrantVolumeId.value ?: return
+        _pendingGrantVolumeId.value = null
+        viewModelScope.launch {
+            settingsRepo.setVolumeGrant(volumeId, treeUri)
+            refreshVolumes()
+            enterVolume(volumeId, treeUri.toString())
+        }
+    }
+
+    fun dismissPendingGrant() { _pendingGrantVolumeId.value = null }
+
+    /** Navigate back to the synthetic volume-list root. */
+    fun goToVolumeRoot() {
+        _currentDir.value = null
+        expanded.clear()
+        childrenCache.clear()
+        containsCache.clear()
+        rebuild(showLoading = false)
+    }
 
     fun setFilter(showSvg: Boolean, showXml: Boolean) {
         _filter.value = TypeFilter(showSvg, showXml)
@@ -144,13 +221,13 @@ class FileManagerViewModel(
     }
 
     fun toggleDir(node: FileNode) {
-        val key = node.file.absolutePath
+        val key = node.uriString
         if (expanded.contains(key)) expanded.remove(key) else expanded.add(key)
         // Expand/collapse reads from the children cache — no spinner, no reset.
         rebuild(showLoading = false)
     }
 
-    fun isMarked(node: FileNode): Boolean = MarkedFilesStore.isMarked(node.file)
+    fun isMarked(node: FileNode): Boolean = MarkedFilesStore.isMarked(node.doc)
     fun clearMarks() = MarkedFilesStore.clear()
 
     fun setQuery(q: String) {
@@ -159,10 +236,11 @@ class FileManagerViewModel(
             _searchResults.value = emptyList()
             return
         }
+        val root = _currentDir.value ?: run { _searchResults.value = emptyList(); return }
         viewModelScope.launch {
             _loading.value = true
             val results = withContext(Dispatchers.IO) {
-                repo.search(_currentDir.value, q).filter { _filter.value.accepts(it) }
+                repo.search(root, q).filter { _filter.value.accepts(it) }
             }
             _searchResults.value = results
             _loading.value = false
@@ -175,8 +253,12 @@ class FileManagerViewModel(
         _properties.value = null
         viewModelScope.launch {
             try {
+                val ctx = getApplication<Application>()
                 // Read bytes once — reused by both render and analysis.
-                val bytes = withContext(Dispatchers.IO) { node.file.readBytes() }
+                val bytes = withContext(Dispatchers.IO) {
+                    ctx.contentResolver.openInputStream(node.doc.uri)?.use { it.readBytes() }
+                        ?: throw java.io.IOException("cannot open ${node.doc.uri}")
+                }
 
                 when (node.kind) {
                     FileKind.Svg, FileKind.Xml -> {
@@ -194,7 +276,7 @@ class FileManagerViewModel(
                             async {
                                 try {
                                     val json = native.analyzeVector(bytes)
-                                    com.watermelon.converter.data.model.VectorProperties.from(node.file, json)
+                                    com.watermelon.converter.data.model.VectorProperties.fromJson(node.name, json)
                                 } catch (e: Exception) {
                                     AppLogger.logError("FileManager", "analysis failed for ${node.name}", e)
                                     null
@@ -224,7 +306,7 @@ class FileManagerViewModel(
      *  can be marked (only they can be converted). */
     fun toggleMarkPreviewed() {
         val node = _previewedFile.value ?: return
-        if (node.kind == FileKind.Svg) MarkedFilesStore.toggle(node.file)
+        if (node.kind == FileKind.Svg) MarkedFilesStore.toggle(node.doc)
     }
 
     /**
@@ -233,15 +315,16 @@ class FileManagerViewModel(
      * folders the files were marked in.
      */
     fun convertMarked() {
+        val ctx = getApplication<Application>()
         val files = MarkedFilesStore.files().filter {
-            it.isFile && it.name.endsWith(".svg", ignoreCase = true)
+            it.isFile && (it.name ?: "").endsWith(".svg", ignoreCase = true)
         }
         if (files.isEmpty()) return
         _converting.value = true
         viewModelScope.launch {
             try {
                 val outFile = withContext(Dispatchers.IO) {
-                    val zipBytes = zipFiles(files)
+                    val zipBytes = zipFiles(ctx, files)
                     var succeeded = 0
                     var failed = 0
                     val resultZip = native.convertZip(zipBytes, object : com.watermelon.converter.jni.ProgressCallback {
@@ -287,12 +370,12 @@ class FileManagerViewModel(
 
     fun dismissConvertResult() { _convertResult.value = null }
 
-    private fun zipFiles(files: List<File>): ByteArray {
+    private fun zipFiles(ctx: Application, files: List<DocumentFile>): ByteArray {
         val out = ByteArrayOutputStream()
         val used = HashSet<String>()
         ZipOutputStream(out).use { zos ->
             for (f in files) {
-                var name = f.name
+                var name = f.name ?: continue
                 if (!used.add(name)) {
                     val base = name.substringBeforeLast('.', name)
                     val ext = name.substringAfterLast('.', "")
@@ -302,8 +385,9 @@ class FileManagerViewModel(
                         i++
                     } while (!used.add(name))
                 }
+                val bytes = ctx.contentResolver.openInputStream(f.uri)?.use { it.readBytes() } ?: continue
                 zos.putNextEntry(ZipEntry(name))
-                zos.write(f.readBytes())
+                zos.write(bytes)
                 zos.closeEntry()
             }
         }
@@ -312,18 +396,18 @@ class FileManagerViewModel(
 
     // --- Phase 1: selection management --------------------------------------
 
-    fun isSelected(node: FileNode): Boolean = _selected.value.contains(node.file.absolutePath)
+    fun isSelected(node: FileNode): Boolean = _selected.value.contains(node.uriString)
 
     /** Long-press a file: enter selection mode and select it. */
     fun startSelection(node: FileNode) {
         if (node.isDirectory) return
         _selectionMode.value = true
-        _selected.value = _selected.value + node.file.absolutePath
+        _selected.value = _selected.value + node.uriString
     }
 
     fun toggleSelect(node: FileNode) {
         if (node.isDirectory) return
-        val key = node.file.absolutePath
+        val key = node.uriString
         _selected.value = _selected.value.toMutableSet().apply {
             if (contains(key)) remove(key) else add(key)
         }
@@ -342,21 +426,27 @@ class FileManagerViewModel(
     fun selectAllXml() = selectAllOfType(svg = false)
 
     private fun selectAllOfType(svg: Boolean) {
+        val dir = _currentDir.value ?: return
         viewModelScope.launch {
-            val files = withContext(Dispatchers.IO) {
+            val docs = withContext(Dispatchers.IO) {
                 val f = if (svg) TypeFilter(showSvg = true, showXml = false)
                         else TypeFilter(showSvg = false, showXml = true)
-                repo.matchingFilesIn(_currentDir.value, f)
+                repo.matchingFilesIn(dir, f)
             }
-            if (files.isNotEmpty()) {
+            if (docs.isNotEmpty()) {
                 _selectionMode.value = true
-                _selected.value = _selected.value + files.map { it.absolutePath }
+                _selected.value = _selected.value + docs.map { it.uri.toString() }
             }
         }
     }
 
-    private fun selectedFiles(): List<File> =
-        _selected.value.map { File(it) }.filter { it.exists() }
+    private fun selectedNodes(): List<FileNode> {
+        val dir = _currentDir.value ?: return emptyList()
+        // Selection keys are uri strings; resolve against the flattened tree's
+        // cached FileNodes rather than re-querying, since we already hold them.
+        val allCached = childrenCache.values.flatten()
+        return allCached.filter { _selected.value.contains(it.uriString) && it.doc.exists() }
+    }
 
     fun dismissOpStatus() { _opStatus.value = null }
 
@@ -364,7 +454,8 @@ class FileManagerViewModel(
 
     /** Zip & ship: zip the selected SVGs, convert, write to Batch_files. */
     fun zipAndShipSelected() {
-        val files = selectedFiles().filter { it.name.endsWith(".svg", true) }
+        val ctx = getApplication<Application>()
+        val files = selectedNodes().map { it.doc }.filter { (it.name ?: "").endsWith(".svg", true) }
         if (files.isEmpty()) {
             _opStatus.value = "No SVG files selected to convert"
             return
@@ -374,162 +465,8 @@ class FileManagerViewModel(
         viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val zipBytes = zipFiles(files)
+                    val zipBytes = zipFiles(ctx, files)
                     val resultZip = native.convertZip(zipBytes, object : com.watermelon.converter.jni.ProgressCallback {
                         override fun onProgress(done: Int, total: Int, currentName: String) {}
                     })
-                    var succeeded = 0; var failed = 0
-                    java.util.zip.ZipInputStream(resultZip.inputStream()).use { zis ->
-                        while (true) {
-                            val e = zis.nextEntry ?: break
-                            val content = zis.readBytes()
-                            if (e.name.endsWith(".error.txt")) {
-                                failed++
-                                val src = e.name.removeSuffix(".error.txt")
-                                com.watermelon.converter.data.model.HistoryStore.add(
-                                    src, "", ok = false, error = String(content).trim()
-                                )
-                            } else {
-                                succeeded++
-                                com.watermelon.converter.data.model.HistoryStore.add(
-                                    e.name, String(content), ok = true
-                                )
-                            }
-                        }
-                    }
-                    val outName = "batch_${System.currentTimeMillis()}.zip"
-                    val destUri = outputDestUri()
-                    com.watermelon.converter.util.OutputDestination.write(
-                        getApplication(), resultZip, outName, destUri,
-                    )
-                    val savedTo = com.watermelon.converter.util.OutputDestination
-                        .displayLabel(getApplication(), destUri) + "/" + outName
-                    ConvertMarkedResult(succeeded, failed, savedTo)
-                }
-                _convertResult.value = result
-            } catch (e: Exception) {
-                AppLogger.logError("FileManager", "zipAndShipSelected failed", e)
-                _opStatus.value = "Conversion failed"
-            } finally {
-                _converting.value = false
-            }
-        }
-    }
-
-    /** Delete the selected files. */
-    fun deleteSelected() {
-        val files = selectedFiles()
-        if (files.isEmpty()) return
-        viewModelScope.launch {
-            val n = withContext(Dispatchers.IO) { repo.delete(files) }
-            invalidateAndRebuild()
-            exitSelection()
-            _opStatus.value = "Deleted $n file${if (n == 1) "" else "s"}"
-        }
-    }
-
-    /**
-     * Rename selected files. The first keeps [baseName]; the rest are numbered
-     * baseName_1, baseName_2, … preserving each file's original extension.
-     */
-    fun renameSelected(baseName: String) {
-        val files = selectedFiles()
-        if (files.isEmpty() || baseName.isBlank()) return
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                files.forEachIndexed { i, f ->
-                    val ext = f.name.substringAfterLast('.', "")
-                    val stem = if (i == 0) baseName else "${baseName}_$i"
-                    val newName = if (ext.isEmpty()) stem else "$stem.$ext"
-                    repo.rename(f, newName)
-                }
-            }
-            invalidateAndRebuild()
-            exitSelection()
-            _opStatus.value = "Renamed ${files.size} file${if (files.size == 1) "" else "s"}"
-        }
-    }
-
-    /**
-     * Copy or move selected files into a SAF-picked destination tree.
-     * Source files are java.io.File; destination is a content:// tree, so we
-     * write through DocumentFile (the correct bridge for an arbitrary picked
-     * folder). [move] deletes the source on success.
-     */
-    fun copyOrMoveSelectedTo(treeUri: android.net.Uri, move: Boolean) {
-        val files = selectedFiles()
-        if (files.isEmpty()) return
-        viewModelScope.launch {
-            val n = withContext(Dispatchers.IO) {
-                var count = 0
-                val ctx = getApplication<Application>()
-                val destDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, treeUri)
-                    ?: return@withContext 0
-                for (f in files) {
-                    try {
-                        val mime = if (f.name.endsWith(".svg", true)) "image/svg+xml" else "text/xml"
-                        val created = destDir.createFile(mime, f.name) ?: continue
-                        ctx.contentResolver.openOutputStream(created.uri)?.use { out ->
-                            f.inputStream().use { it.copyTo(out) }
-                        }
-                        if (move) f.delete()
-                        count++
-                    } catch (e: Exception) {
-                        AppLogger.logError("FileManager", "copy/move failed for ${f.path}", e)
-                    }
-                }
-                count
-            }
-            if (move) invalidateAndRebuild()
-            exitSelection()
-            _opStatus.value = "${if (move) "Moved" else "Copied"} $n file${if (n == 1) "" else "s"}"
-        }
-    }
-
-    private fun invalidateAndRebuild() {
-        // A real filesystem change (delete/rename/move/copy) happened — drop the
-        // caches so the affected folders re-scan, and show the spinner because
-        // this is a genuine reload, not a view change.
-        childrenCache.clear()
-        containsCache.clear()
-        rebuild(showLoading = true)
-    }
-
-    // --- tree building -------------------------------------------------------
-
-    private fun rebuild(showLoading: Boolean = true) {
-        viewModelScope.launch {
-            if (showLoading) _loading.value = true
-            val list = withContext(Dispatchers.IO) { flatten() }
-            _rows.value = list
-            if (showLoading) _loading.value = false
-        }
-    }
-
-    private fun flatten(): List<TreeRow> {
-        val out = ArrayList<TreeRow>()
-        val filter = _filter.value
-        fun walk(dir: File, depth: Int) {
-            val cacheKey = dir.absolutePath
-            val kids = childrenCache.getOrPut(cacheKey) { repo.listChildren(dir) }
-            for (node in kids) {
-                if (node.isDirectory) {
-                    // Only show folders that contain matching SVG/XML somewhere inside.
-                    // Memoized so expand/collapse doesn't re-scan the subtree.
-                    val matches = containsCache.getOrPut(node.file.absolutePath) {
-                        repo.containsMatching(node.file, filter)
-                    }
-                    if (!matches) continue
-                    val isExp = expanded.contains(node.file.absolutePath)
-                    out.add(TreeRow(node, depth, isExp))
-                    if (isExp) walk(node.file, depth + 1)
-                } else {
-                    // Files: show only those matching the active type filter.
-                    if (filter.accepts(node)) out.add(TreeRow(node, depth, false))
-                }
-            }
-        }
-        walk(_currentDir.value, 0)
-        return out
-    }
-}
+  
