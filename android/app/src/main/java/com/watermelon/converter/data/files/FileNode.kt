@@ -5,21 +5,42 @@
 
 package com.watermelon.converter.data.files
 
-import java.io.File
+import androidx.documentfile.provider.DocumentFile
 
-/** A node in the real-filesystem-browsed tree. Directories are expandable; files are leaves. */
+/**
+ * A node in the SAF-browsed tree. Directories are expandable; files are
+ * leaves. Backed by DocumentFile so it works uniformly across the app's own
+ * scoped storage and any user-granted external volume (SD card, USB-OTG).
+ *
+ * A DocumentFile's metadata (name/isDirectory/size/lastModified) requires a
+ * content-resolver query per call on some providers, so these are captured
+ * once at listing time rather than re-read from [doc] on every access.
+ */
 data class FileNode(
-    val file: File,
+    val doc: DocumentFile,
     val name: String,
     val isDirectory: Boolean,
     val sizeBytes: Long,
     val lastModified: Long,
 ) {
+    /** Stable identity for this node — used as list keys and mark/select keys. */
+    val uriString: String get() = doc.uri.toString()
+
     val kind: FileKind get() = when {
         isDirectory -> FileKind.Directory
         name.endsWith(".svg", ignoreCase = true) -> FileKind.Svg
         name.endsWith(".xml", ignoreCase = true) -> FileKind.Xml
         else -> FileKind.Other
+    }
+
+    companion object {
+        fun from(doc: DocumentFile): FileNode = FileNode(
+            doc = doc,
+            name = doc.name ?: "",
+            isDirectory = doc.isDirectory,
+            sizeBytes = if (doc.isFile) doc.length() else 0L,
+            lastModified = doc.lastModified(),
+        )
     }
 }
 
