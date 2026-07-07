@@ -28,6 +28,8 @@ data class AppSettings(
     val outputDestinationUri: String? = null,
     /** Show the properties panel below the preview image in the file manager. */
     val showFileProperties: Boolean = true,
+    /** volume id -> granted SAF tree URI string, for file-manager browsing of that volume. */
+    val volumeGrants: Map<String, String> = emptyMap(),
 )
 
 class SettingsRepository(private val context: Context) {
@@ -37,6 +39,7 @@ class SettingsRepository(private val context: Context) {
         val SLIDE_ANIMATION = booleanPreferencesKey("slide_animation")
         val OUTPUT_DEST_URI = stringPreferencesKey("output_destination_uri")
         val SHOW_FILE_PROPERTIES = booleanPreferencesKey("show_file_properties")
+        val VOLUME_GRANTS = stringPreferencesKey("volume_grants") // JSON-ish "id=uri;id=uri"
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -47,7 +50,44 @@ class SettingsRepository(private val context: Context) {
             slideAnimation = p[Keys.SLIDE_ANIMATION] ?: true,
             outputDestinationUri = p[Keys.OUTPUT_DEST_URI],
             showFileProperties = p[Keys.SHOW_FILE_PROPERTIES] ?: true,
+            volumeGrants = decodeVolumeGrants(p[Keys.VOLUME_GRANTS]),
         )
+    }
+
+    /** Persist a SAF grant for [volumeId] -> [treeUri], surviving app restarts. */
+    suspend fun setVolumeGrant(volumeId: String, treeUri: android.net.Uri) {
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: SecurityException) {}
+        context.dataStore.edit { p ->
+            val current = decodeVolumeGrants(p[Keys.VOLUME_GRANTS]).toMutableMap()
+            current[volumeId] = treeUri.toString()
+            p[Keys.VOLUME_GRANTS] = encodeVolumeGrants(current)
+        }
+    }
+
+    suspend fun clearVolumeGrant(volumeId: String) {
+        context.dataStore.edit { p ->
+            val current = decodeVolumeGrants(p[Keys.VOLUME_GRANTS]).toMutableMap()
+            current.remove(volumeId)
+            p[Keys.VOLUME_GRANTS] = encodeVolumeGrants(current)
+        }
+    }
+
+    /** Encoding: "id1\u0001uri1\u0002id2\u0001uri2" — unit separators, no external JSON dep. */
+    private fun encodeVolumeGrants(map: Map<String, String>): String =
+        map.entries.joinToString("\u0002") { (k, v) -> "$k\u0001$v" }
+
+    private fun decodeVolumeGrants(raw: String?): Map<String, String> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return raw.split("\u0002").mapNotNull { entry ->
+            val parts = entry.split("\u0001", limit = 2)
+            if (parts.size == 2) parts[0] to parts[1] else null
+        }.toMap()
     }
 
     suspend fun setPreviewPx(px: Int) {
