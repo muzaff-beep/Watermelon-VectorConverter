@@ -30,6 +30,10 @@ pub struct VdGroup {
     pub rotation: f32,
     pub pivot_x: f32,
     pub pivot_y: f32,
+    /// Normalized path data for a <clip-path> scoped to this group, if any.
+    /// VectorDrawable's <clip-path> is a sibling element (emitted as the
+    /// group's first child) that clips everything else drawn in the group.
+    pub clip_path: Option<String>,
     pub children: Vec<Node>,
 }
 
@@ -39,6 +43,7 @@ impl Default for VdGroup {
             translate_x: 0.0, translate_y: 0.0,
             scale_x: 1.0, scale_y: 1.0,
             rotation: 0.0, pivot_x: 0.0, pivot_y: 0.0,
+            clip_path: None,
             children: Vec::new(),
         }
     }

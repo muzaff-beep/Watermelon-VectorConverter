@@ -15,8 +15,43 @@ use std::collections::BTreeMap;
 use crate::models::Gradient;
 
 const UNSUPPORTED: &[&str] = &[
-    "filter", "text", "tspan", "pattern", "mask", "image", "use", "clipPath",
+    "filter", "text", "tspan", "pattern", "mask", "image", "use",
 ];
+
+/// Collect all <clipPath> definitions, keyed by id. Only the first
+/// path-like child is used (VectorDrawable's <clip-path> takes one pathData
+/// string, not a compound region), matching common real-world usage.
+fn collect_clip_paths(doc: &roxmltree::Document) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for node in doc.descendants().filter(|n| n.has_tag_name("clipPath")) {
+        let id = match node.attribute("id") { Some(i) => i.to_string(), None => continue };
+        for child in node.children().filter(|n| n.is_element()) {
+            let tag = child.tag_name().name();
+            let raw = match tag {
+                "path" => child.attribute("d").map(|s| s.to_string()),
+                "rect" => shapes::rect_to_path(&child),
+                "circle" => shapes::circle_to_path(&child),
+                "ellipse" => shapes::ellipse_to_path(&child),
+                "polygon" => shapes::polygon_to_path(&child),
+                _ => None,
+            };
+            if let Some(d) = raw {
+                if let Ok(normalized) = normalize_path_data(&d) {
+                    map.insert(id, normalized);
+                    break;
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Resolve a clip-path="url(#id)" attribute against the collected defs.
+fn resolve_clip_path(el: &roxmltree::Node, clips: &BTreeMap<String, String>) -> Option<String> {
+    let raw = el.attribute("clip-path")?;
+    let id = gradients::url_ref(raw)?;
+    clips.get(id).cloned()
+}
 
 pub fn parse(svg_bytes: &[u8]) -> Result<NormalizedSvg, ConversionError> {
     let text = std::str::from_utf8(svg_bytes)
@@ -42,9 +77,10 @@ pub fn parse(svg_bytes: &[u8]) -> Result<NormalizedSvg, ConversionError> {
     let root_alpha = attr_f32(&root, "opacity").unwrap_or(1.0);
 
     let grads = gradients::collect(&doc);
+    let clips = collect_clip_paths(&doc);
     let mut nodes = Vec::new();
     for child in root.children().filter(|n| n.is_element()) {
-        if let Some(n) = parse_node(&child, &grads)? {
+        if let Some(n) = parse_node(&child, &grads, &clips)? {
             nodes.push(n);
         }
     }
@@ -72,7 +108,7 @@ fn parse_viewbox(root: &roxmltree::Node) -> Result<(f32, f32), ConversionError> 
     }
 }
 
-fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>) -> Result<Option<Node>, ConversionError> {
+fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &BTreeMap<String, String>) -> Result<Option<Node>, ConversionError> {
     let tag = el.tag_name().name();
     match tag {
         "path" => {
@@ -84,8 +120,10 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>) -> Resul
             // where every path has translate(x,y) instead of being inside a <g>),
             // wrap it in a VdGroup so the position is preserved. Without this,
             // every translated path lands at (0,0) and the image is scrambled.
-            if el.attribute("transform").is_some() {
+            let own_clip = resolve_clip_path(el, clips);
+            if el.attribute("transform").is_some() || own_clip.is_some() {
                 let mut group = parse_group_transform(el);
+                group.clip_path = own_clip;
                 group.children.push(Node::Path(vd_path));
                 Ok(Some(Node::Group(group)))
             } else {
@@ -94,8 +132,9 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>) -> Resul
         }
         "g" => {
             let mut group = parse_group_transform(el);
+            group.clip_path = resolve_clip_path(el, clips);
             for child in el.children().filter(|n| n.is_element()) {
-                if let Some(n) = parse_node(&child, grads)? {
+                if let Some(n) = parse_node(&child, grads, clips)? {
                     group.children.push(n);
                 }
             }
@@ -115,7 +154,15 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>) -> Resul
             match raw {
                 Some(d) => {
                     let path_data = normalize_path_data(&d)?;
-                    Ok(Some(Node::Path(style_path(el, path_data, grads)?)))
+                    let vd_path = style_path(el, path_data, grads)?;
+                    let own_clip = resolve_clip_path(el, clips);
+                    if own_clip.is_some() {
+                        let mut group = VdGroup { clip_path: own_clip, ..VdGroup::default() };
+                        group.children.push(Node::Path(vd_path));
+                        Ok(Some(Node::Group(group)))
+                    } else {
+                        Ok(Some(Node::Path(vd_path)))
+                    }
                 }
                 None => Ok(None), // degenerate shape (e.g. zero size) -> skip
             }

@@ -51,6 +51,10 @@ fn emit_group(g: &VdGroup, level: usize, s: &mut String) {
     if g.pivot_x != 0.0 { s.push_str(&format!("\n{pad}    android:pivotX=\"{}\"", fmt_num(g.pivot_x))); }
     if g.pivot_y != 0.0 { s.push_str(&format!("\n{pad}    android:pivotY=\"{}\"", fmt_num(g.pivot_y))); }
     s.push_str(">\n");
+    if let Some(cp) = &g.clip_path {
+        let ipad = indent(level + 1);
+        s.push_str(&format!("{ipad}<clip-path android:pathData=\"{}\"/>\n", cp));
+    }
     for child in &g.children {
         emit_node(child, level + 1, s);
     }

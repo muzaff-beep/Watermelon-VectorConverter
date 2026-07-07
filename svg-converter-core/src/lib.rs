@@ -19,6 +19,9 @@ pub mod utils;
 pub mod image_export;
 pub mod batch_processor;
 pub mod analysis;
+pub mod vd_models;
+pub mod vd_parser;
+pub mod svg_emit;
 
 // FFI bridge (Module B). jni.rs gates its whole contents behind
 // #![cfg(target_os = "android")] and the `jni` crate is an Android-only
@@ -35,6 +38,12 @@ pub use error::ConversionError;
 pub fn convert_svg(svg_bytes: &[u8]) -> Result<String, ConversionError> {
     let normalized = svg_parser::parse(svg_bytes)?;
     Ok(vector_drawable::emit(&normalized))
+}
+
+/// C-4: Convert Android VectorDrawable XML back into SVG.
+pub fn convert_vd(vd_xml: &[u8]) -> Result<String, ConversionError> {
+    let doc = vd_parser::parse(vd_xml)?;
+    Ok(svg_emit::emit(&doc))
 }
 
 /// Analyze a vector file's structure for the properties panel.
