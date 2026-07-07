@@ -327,17 +327,17 @@ private fun FilesTopBar(
 
         Spacer(Modifier.height(12.dp))
 
-        // Filter chips — SVG and XML
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilterPill(
+        // Filter switches — SVG and XML
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            FilterSwitch(
                 label = "SVG",
-                active = filter.showSvg,
-                onClick = { onFilterChange(!filter.showSvg, filter.showXml) },
+                checked = filter.showSvg,
+                onCheckedChange = { onFilterChange(it, filter.showXml) },
             )
-            FilterPill(
+            FilterSwitch(
                 label = "XML",
-                active = filter.showXml,
-                onClick = { onFilterChange(filter.showSvg, !filter.showXml) },
+                checked = filter.showXml,
+                onCheckedChange = { onFilterChange(filter.showSvg, it) },
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -346,28 +346,30 @@ private fun FilesTopBar(
 }
 
 @Composable
-private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
-    val border = if (active) null else androidx.compose.foundation.BorderStroke(1.5.dp, SlateGray.copy(alpha = 0.4f))
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (active) FreshTeal else Color.Transparent)
-            .then(if (!active) Modifier.background(Color.Transparent) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
+private fun FilterSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.clickable { onCheckedChange(!checked) },
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (active) {
-                Text("✓", color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-            Text(
-                label,
-                color = if (active) PureWhite else SlateGray,
-                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                fontSize = 14.sp,
-            )
-        }
+        Text(
+            label,
+            color = if (checked) MaterialTheme.colorScheme.onBackground else SlateGray,
+            fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 14.sp,
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = PureWhite,
+                checkedTrackColor = FreshTeal,
+                uncheckedThumbColor = PureWhite,
+                uncheckedTrackColor = SlateGray.copy(alpha = 0.4f),
+                uncheckedBorderColor = Color.Transparent,
+                checkedBorderColor = Color.Transparent,
+            ),
+        )
     }
 }
 
@@ -494,282 +496,4 @@ private fun FileRow(
             Box {
                 TextButton(
                     onClick = { menuOpen = true },
-                    contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Text("⋮", fontSize = 18.sp, color = SlateGray)
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    if (!node.isDirectory) {
-                        DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; onMenuAction("rename") })
-                        DropdownMenuItem(text = { Text("Copy") }, onClick = { menuOpen = false; onMenuAction("copy") })
-                        DropdownMenuItem(text = { Text("Move") }, onClick = { menuOpen = false; onMenuAction("move") })
-                        DropdownMenuItem(text = { Text("Delete", color = WatermelonRed) }, onClick = { menuOpen = false; onMenuAction("delete") })
-                    }
-                }
-            }
-        }
-    }
-    HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Bottom bars
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun MarkedBar(count: Int, converting: Boolean, onClear: () -> Unit, onConvert: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "$count marked for conversion",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = onClear, enabled = !converting) {
-            Text("Clear", color = SlateGray)
-        }
-        Spacer(Modifier.width(8.dp))
-        Button(
-            onClick = onConvert,
-            enabled = !converting,
-            shape = RoundedCornerShape(50),
-            colors = ButtonDefaults.buttonColors(containerColor = WatermelonRed),
-        ) {
-            if (converting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = PureWhite)
-            else Text("Convert", color = PureWhite, fontWeight = FontWeight.Bold)
-        }
-    }
-    HorizontalDivider(color = Color(0xFFE2E8F0))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FAB
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun FileOpsFab(
-    onZipShip: () -> Unit,
-    onMove: () -> Unit,
-    onCopy: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        FloatingActionButton(
-            onClick = { open = true },
-            containerColor = WatermelonRed,
-            contentColor = PureWhite,
-            shape = CircleShape,
-        ) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Light) }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Zip & Ship (convert)") }, onClick = { open = false; onZipShip() })
-            DropdownMenuItem(text = { Text("Move…") }, onClick = { open = false; onMove() })
-            DropdownMenuItem(text = { Text("Copy…") }, onClick = { open = false; onCopy() })
-            DropdownMenuItem(text = { Text("Rename…") }, onClick = { open = false; onRename() })
-            DropdownMenuItem(text = { Text("Delete…") }, onClick = { open = false; onDelete() })
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Preview pane
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun PreviewPane(
-    state: PreviewState,
-    isMarkable: Boolean,
-    isMarked: Boolean,
-    onToggleMark: () -> Unit,
-    onExpand: () -> Unit,
-    onClose: () -> Unit,
-    properties: com.watermelon.converter.data.model.VectorProperties? = null,
-    showProperties: Boolean = true,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 520.dp)
-            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when (state) {
-                    is PreviewState.SvgImage -> state.name
-                    is PreviewState.Failed -> state.name
-                    else -> "Preview"
-                },
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (isMarkable) {
-                TextButton(onClick = onToggleMark) {
-                    Text(
-                        if (isMarked) "🔖 Marked" else "🔖 Mark",
-                        fontSize = 13.sp,
-                        color = if (isMarked) WatermelonRed else SlateGray,
-                    )
-                }
-            }
-            TextButton(onClick = onExpand) { Text("Expand", fontSize = 13.sp, color = FreshTeal) }
-            TextButton(onClick = onClose) { Text("Close", fontSize = 13.sp, color = SlateGray) }
-        }
-        Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 200.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Crossfade(targetState = state, label = "preview") { s ->
-                when (s) {
-                    is PreviewState.Loading -> WatermelonLoader(size = 44.dp)
-                    is PreviewState.SvgImage -> {
-                        val bmp = remember(s.png) { BitmapFactory.decodeByteArray(s.png, 0, s.png.size) }
-                        if (bmp != null) {
-                            Box(Modifier.background(Color.White).padding(8.dp), contentAlignment = Alignment.Center) {
-                                Image(bmp.asImageBitmap(), contentDescription = s.name)
-                            }
-                        }
-                    }
-                    is PreviewState.Failed -> Text(s.message, color = WatermelonRed, fontSize = 13.sp)
-                    PreviewState.Empty -> {}
-                }
-            }
-        }
-        if (showProperties && properties != null) {
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFFE2E8F0))
-            Spacer(Modifier.height(8.dp))
-            VectorPropertiesPanel(properties)
-        }
-    }
-}
-
-@Composable
-private fun FullScreenPreview(state: PreviewState, onClose: () -> Unit) {
-    // Full-screen overlay with white canvas, image fills the screen, close button at top.
-    // Uses fillMaxSize so the image actually expands rather than opening at the same size.
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-        ),
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.White),
-        ) {
-            when (val s = state) {
-                is PreviewState.SvgImage -> {
-                    val bmp = remember(s.png) {
-                        BitmapFactory.decodeByteArray(s.png, 0, s.png.size)
-                    }
-                    if (bmp != null) {
-                        // Image fills available space, maintaining aspect ratio
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = s.name,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                }
-                is PreviewState.Failed -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(s.message, color = WatermelonRed, textAlign = TextAlign.Center)
-                    }
-                }
-                else -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        WatermelonLoader(size = 56.dp)
-                    }
-                }
-            }
-
-            // Close button pinned top-right
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clip(CircleShape)
-                    .background(DeepNavy.copy(alpha = 0.75f))
-                    .clickable { onClose() }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Text("✕  Close", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            // File name pinned at bottom
-            if (state is PreviewState.SvgImage) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(DeepNavy.copy(alpha = 0.55f))
-                        .padding(12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(state.name, color = PureWhite, fontSize = 13.sp)
-                }
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Dialogs
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun RenameDialog(count: Int, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (count > 1) "Rename $count files" else "Rename file") },
-        text = {
-            Column {
-                if (count > 1) {
-                    Text(
-                        "First file keeps this name; the rest are numbered. Extensions are preserved.",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SlateGray,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    placeholder = { Text("New name (no extension)") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { if (name.isNotBlank()) onConfirm(name.trim()) },
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(containerColor = FreshTeal),
-            ) { Text("Rename") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SlateGray) } },
-    )
-}
+                    contentPadding 
