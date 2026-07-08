@@ -34,6 +34,13 @@ object SvgConverterNative {
 
     external fun nativeConvertSvg(svg: ByteArray): String
     external fun nativeConvertZip(zip: ByteArray, cb: ProgressCallback): ByteArray
+
+    /** Reverse conversion: VectorDrawable XML bytes -> SVG string. */
+    external fun nativeConvertVd(vdXml: ByteArray): String
+
+    /** Reverse batch conversion: zip of .xml -> zip of .svg (+ .error.txt sidecars). */
+    external fun nativeConvertVdZip(zip: ByteArray, cb: ProgressCallback): ByteArray
+
     external fun nativeRenderSvgPreview(svg: ByteArray, px: Int): ByteArray
     external fun nativeRenderVdPreview(vdXml: String, px: Int): ByteArray
     external fun nativeCancel()

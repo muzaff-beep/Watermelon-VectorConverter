@@ -15,10 +15,11 @@
 //! This module is compiled only for Android targets.
 #![cfg(target_os = "android")]
 
-use crate::batch_processor::{convert_zip, ProgressEvent};
+use crate::batch_processor::{convert_zip, convert_vd_zip, ProgressEvent};
 use crate::error::ConversionError;
 use crate::image_export::{render_svg_preview, render_vd_preview};
 use crate::convert_svg;
+use crate::convert_vd;
 
 use jni::objects::{JByteArray, JClass, JObject, JString, JThrowable, JValue};
 use jni::sys::{jbyteArray, jint, jobject, jstring};
@@ -102,7 +103,27 @@ pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nati
     }
 }
 
-/// nativeRenderSvgPreview(svg: ByteArray, px: Int): ByteArray   [Contract C-3]
+/// nativeConvertVd(vdXml: ByteArray): String   [Contract C-4]
+/// Reverse of nativeConvertSvg: VectorDrawable XML -> SVG string.
+#[no_mangle]
+pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeConvertVd<'a>(
+    mut env: JNIEnv<'a>,
+    _cls: JClass<'a>,
+    vd_xml: JByteArray<'a>,
+) -> jstring {
+    let null = JObject::null().into_raw();
+    let bytes = match bytes_from(&mut env, &vd_xml) {
+        Ok(b) => b,
+        Err(e) => { throw_conversion(&mut env, &e); return null; }
+    };
+    match convert_vd(&bytes) {
+        Ok(svg) => match env.new_string(svg) {
+            Ok(s) => s.into_raw(),
+            Err(e) => { throw_conversion(&mut env, &ConversionError::Internal(e.to_string())); null }
+        },
+        Err(e) => { throw_conversion(&mut env, &e); null }
+    }
+}
 #[no_mangle]
 pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeRenderSvgPreview<'a>(
     mut env: JNIEnv<'a>,
@@ -180,6 +201,50 @@ pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nati
     };
 
     match convert_zip(&bytes, &sink, &CANCEL) {
+        Ok(out) => env.byte_array_from_slice(&out).map(|a| a.into_raw()).unwrap_or(null),
+        Err(e) => { throw_conversion(&mut env, &e); null }
+    }
+}
+
+/// nativeConvertVdZip(zip: ByteArray, cb: ProgressCallback): ByteArray   [Contract C-4]
+/// Reverse batch: every .xml in the zip -> .svg. Mirrors nativeConvertZip's
+/// marshalling exactly; kept separate so the existing C-2/C-3 contract for
+/// nativeConvertZip is never touched.
+#[no_mangle]
+pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeConvertVdZip<'a>(
+    mut env: JNIEnv<'a>,
+    _cls: JClass<'a>,
+    zip: JByteArray<'a>,
+    cb: JObject<'a>,
+) -> jbyteArray {
+    let null = JObject::null().into_raw();
+    CANCEL.store(false, Ordering::SeqCst);
+
+    let bytes = match bytes_from(&mut env, &zip) { Ok(b) => b, Err(e) => { throw_conversion(&mut env, &e); return null; } };
+
+    let env_ptr = SendSyncEnvPtr(env.get_raw());
+    let cb_raw = SendSyncObjPtr(cb.as_raw());
+
+    let sink = move |ev: ProgressEvent| {
+        // SAFETY: same as nativeConvertZip — convert_vd_zip's coordinator
+        // invokes the sink synchronously on the thread that owns `env`.
+        let mut env = unsafe { JNIEnv::from_raw(env_ptr.get()).expect("valid env") };
+        let cb_obj = unsafe { JObject::from_raw(cb_raw.get()) };
+        if let Ok(name) = env.new_string(&ev.current_name) {
+            let _ = env.call_method(
+                &cb_obj,
+                "onProgress",
+                "(IILjava/lang/String;)V",
+                &[
+                    JValue::Int(ev.done as jint),
+                    JValue::Int(ev.total as jint),
+                    JValue::Object(&JObject::from(name)),
+                ],
+            );
+        }
+    };
+
+    match convert_vd_zip(&bytes, &sink, &CANCEL) {
         Ok(out) => env.byte_array_from_slice(&out).map(|a| a.into_raw()).unwrap_or(null),
         Err(e) => { throw_conversion(&mut env, &e); null }
     }

@@ -8,6 +8,7 @@
 //! Cancellation is a shared atomic flag checked between files.
 
 use crate::convert_svg;
+use crate::convert_vd;
 use crate::error::ConversionError;
 use rayon::prelude::*;
 use std::io::{Cursor, Read, Write};
@@ -138,4 +139,104 @@ fn swap_ext(name: &str, new_ext: &str) -> String {
         Some(idx) => format!("{}.{}", &name[..idx], new_ext),
         None => format!("{}.{}", name, new_ext),
     }
+}
+
+/// C-4 batch: Convert every .xml in `zip_bytes` (VectorDrawable) to .svg,
+/// returning a new ZIP. Mirrors convert_zip exactly, mapped to the reverse
+/// direction — kept as a separate function rather than a flag on convert_zip
+/// so the existing, already-shipped C-2 contract is never touched.
+pub fn convert_vd_zip(
+    zip_bytes: &[u8],
+    progress: &(dyn Fn(ProgressEvent) + Send + Sync),
+    cancel: &CancelFlag,
+) -> Result<Vec<u8>, ConversionError> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes))
+        .map_err(|e| ConversionError::ZipReadError(e.to_string()))?;
+
+    let mut inputs: Vec<(String, Vec<u8>)> = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| ConversionError::ZipReadError(e.to_string()))?;
+        let name = entry.name().to_string();
+        if !name.to_ascii_lowercase().ends_with(".xml") {
+            continue;
+        }
+        let mut buf = Vec::with_capacity(entry.size() as usize);
+        entry
+            .read_to_end(&mut buf)
+            .map_err(|e| ConversionError::ZipReadError(e.to_string()))?;
+        inputs.push((name, buf));
+    }
+
+    let total = inputs.len() as u32;
+    if total == 0 {
+        return Err(ConversionError::ZipReadError("no .xml entries".into()));
+    }
+
+    let (tx, rx) = mpsc::channel::<FileOutcome>();
+    let cancelled_during = AtomicBool::new(false);
+
+    let mut outcomes: Vec<FileOutcome> = Vec::with_capacity(total as usize);
+    std::thread::scope(|s| {
+        let inputs_ref = &inputs;
+        let cancel_ref = &cancel;
+        let cancelled_ref = &cancelled_during;
+        s.spawn(move || {
+            inputs_ref
+                .par_iter()
+                .for_each_with(tx, |tx, (name, bytes)| {
+                    if cancel_ref.load(Ordering::Relaxed) {
+                        cancelled_ref.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                    let result = convert_vd(bytes);
+                    let _ = tx.send(FileOutcome {
+                        name: name.clone(),
+                        result,
+                    });
+                });
+        });
+
+        let mut done = 0u32;
+        for outcome in rx.iter() {
+            done += 1;
+            progress(ProgressEvent {
+                done,
+                total,
+                current_name: outcome.name.clone(),
+            });
+            outcomes.push(outcome);
+        }
+    });
+
+    if cancel.load(Ordering::Relaxed) || cancelled_during.load(Ordering::Relaxed) {
+        return Err(ConversionError::Cancelled);
+    }
+
+    let mut out = Vec::new();
+    {
+        let mut zw = zip::ZipWriter::new(Cursor::new(&mut out));
+        let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for outcome in &outcomes {
+            match &outcome.result {
+                Ok(svg) => {
+                    zw.start_file(swap_ext(&outcome.name, "svg"), opts)
+                        .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+                    zw.write_all(svg.as_bytes())
+                        .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+                }
+                Err(e) => {
+                    zw.start_file(swap_ext(&outcome.name, "error.txt"), opts)
+                        .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+                    zw.write_all(format!("[{}] {}", e.code(), e).as_bytes())
+                        .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+                }
+            }
+        }
+        zw.finish()
+            .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+    }
+    Ok(out)
 }

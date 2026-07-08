@@ -10,6 +10,13 @@ package com.watermelon.converter.jni
 interface SvgConverter {
     fun convertSvg(svg: ByteArray): String
     fun convertZip(zip: ByteArray, cb: ProgressCallback): ByteArray
+
+    /** Reverse conversion: VectorDrawable XML bytes -> SVG string. */
+    fun convertVd(vdXml: ByteArray): String
+
+    /** Reverse batch conversion: zip of .xml -> zip of .svg (+ .error.txt sidecars). */
+    fun convertVdZip(zip: ByteArray, cb: ProgressCallback): ByteArray
+
     fun renderSvgPreview(svg: ByteArray, px: Int): ByteArray
     fun renderVdPreview(vdXml: String, px: Int): ByteArray
     fun cancel()
@@ -22,6 +29,9 @@ object RealSvgConverter : SvgConverter {
     override fun convertSvg(svg: ByteArray) = SvgConverterNative.nativeConvertSvg(svg)
     override fun convertZip(zip: ByteArray, cb: ProgressCallback) =
         SvgConverterNative.nativeConvertZip(zip, cb)
+    override fun convertVd(vdXml: ByteArray) = SvgConverterNative.nativeConvertVd(vdXml)
+    override fun convertVdZip(zip: ByteArray, cb: ProgressCallback) =
+        SvgConverterNative.nativeConvertVdZip(zip, cb)
     override fun renderSvgPreview(svg: ByteArray, px: Int) =
         SvgConverterNative.nativeRenderSvgPreview(svg, px)
     override fun renderVdPreview(vdXml: String, px: Int) =
