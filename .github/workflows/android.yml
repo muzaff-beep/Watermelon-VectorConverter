@@ -1,9 +1,6 @@
 name: android
 
 on:
-  push:
-    paths: [ "android/**", "svg-converter-core/**", ".github/workflows/android.yml" ]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -71,6 +68,14 @@ jobs:
           VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Rename APK file
+        id: rename
+        run: |
+          ORIGINAL="android/app/build/outputs/apk/release/app-release.apk"
+          NEW_NAME="android/app/build/outputs/apk/release/Watermelon_vector_converter_v${{ steps.version.outputs.version }}_app-release.apk"
+          mv $ORIGINAL $NEW_NAME
+          echo "apk_path=$NEW_NAME" >> $GITHUB_OUTPUT
+
       - name: List APK outputs
         run: find android/app/build/outputs/apk/release/ -name "*.apk"
 
@@ -89,7 +94,7 @@ jobs:
             - x86 older emulators
 
             ### Install
-            1. Download app-release.apk below
+            1. Download the newly named APK below
             2. Enable "Install from unknown sources" on your device
             3. Open the APK to install
 
@@ -97,7 +102,7 @@ jobs:
             Also available on Cafebazaar and Myket.
 
             Minimum Android: 8.0 (API 26) Target: Android 15 (API 35)
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: ${{ steps.rename.outputs.apk_path }}
           fail_on_unmatched_files: true
 
   instrumented:
@@ -136,3 +141,4 @@ jobs:
             adb shell 'while [[ -z $(getprop ro.build.version.sdk) ]]; do sleep 2; done'
             adb shell input keyevent 82
             cd android && ./gradlew connectedDebugAndroidTest
+            
