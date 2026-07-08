@@ -249,8 +249,8 @@ fun FilesScreen(
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomEnd) {
                 FileOpsFab(
                     onZipShip = { vm.zipAndShipSelected() },
-                    onMove = { pendingMove = true; folderPicker.launch(null) },
-                    onCopy = { pendingMove = false; folderPicker.launch(null) },
+                    onMove = { pendingMove = true; showFolderChooser = true },
+                    onCopy = { pendingMove = false; showFolderChooser = true },
                     onRename = { showRenameDialog = true },
                     onDelete = { showDeleteConfirm = true },
                 )

@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.watermelon.converter.MainActivity.Routes
+import com.watermelon.converter.Routes
 import com.watermelon.converter.ui.sharedGraphViewModel
 import com.watermelon.converter.ui.theme.*
 import com.watermelon.converter.viewmodel.ConversionViewModel

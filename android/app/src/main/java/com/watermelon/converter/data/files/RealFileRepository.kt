@@ -30,13 +30,13 @@ class RealFileRepository {
         roots.add(StorageRoot("Internal Storage", isPrimary = true, root = Environment.getExternalStorageDirectory()))
         try {
             val dirs = ctx.getExternalFilesDirs(null)
-            for (dir in dirs) {
-                if (dir == null) continue
+            dirLoop@ for (dir in dirs) {
+                if (dir == null) continue@dirLoop
                 // getExternalFilesDirs returns .../Android/data/<pkg>/files per volume;
                 // walk up to the volume root.
                 var vol = dir
                 repeat(4) { vol = vol.parentFile ?: vol }
-                if (vol.absolutePath == roots[0].root.absolutePath) return@repeat
+                if (vol.absolutePath == roots[0].root.absolutePath) continue@dirLoop
                 if (roots.none { it.root.absolutePath == vol.absolutePath }) {
                     roots.add(StorageRoot("SD Card", isPrimary = false, root = vol))
                 }
