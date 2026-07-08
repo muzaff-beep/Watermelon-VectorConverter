@@ -31,6 +31,8 @@ import com.watermelon.converter.ui.theme.*
 import com.watermelon.converter.util.ShareUtils
 import com.watermelon.converter.viewmodel.ConversionViewModel
 import com.watermelon.converter.viewmodel.ConvertUiState
+import com.watermelon.converter.viewmodel.ReverseConversionViewModel
+import com.watermelon.converter.viewmodel.ReverseConvertUiState
 import com.watermelon.converter.viewmodel.SettingsViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -39,11 +41,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun PreviewScreen(
     nav: NavController,
     vm: ConversionViewModel = nav.sharedGraphViewModel(),
+    revVm: ReverseConversionViewModel = nav.sharedGraphViewModel(),
     settingsVm: SettingsViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsState()
+    val revState by revVm.state.collectAsState()
     val settings by settingsVm.settings.collectAsState()
     val done = state as? ConvertUiState.Done
+    val revDone = revState as? ReverseConvertUiState.Done
+    // Whichever direction most recently produced a result drives this screen.
+    // Both VMs reset() on "New", so at most one is ever non-idle at a time.
     val ctx = LocalContext.current
 
     Scaffold(
@@ -51,7 +58,7 @@ fun PreviewScreen(
             TopAppBar(
                 title = {
                     Text(
-                        done?.sourceName ?: "Preview",
+                        done?.sourceName ?: revDone?.sourceName ?: "Preview",
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,
@@ -65,6 +72,13 @@ fun PreviewScreen(
                         TextButton(onClick = { ShareUtils.shareText(ctx, done.sourceName, done.vdXml) }) {
                             Text("Share", color = FreshTeal)
                         }
+                    } else if (revDone != null) {
+                        TextButton(onClick = { ShareUtils.copyToClipboard(ctx, "SVG", revDone.svgXml) }) {
+                            Text("Copy", color = FreshTeal)
+                        }
+                        TextButton(onClick = { ShareUtils.shareText(ctx, revDone.sourceName, revDone.svgXml) }) {
+                            Text("Share", color = FreshTeal)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -73,7 +87,7 @@ fun PreviewScreen(
             )
         },
         bottomBar = {
-            if (done != null) {
+            if (done != null || revDone != null) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -81,7 +95,10 @@ fun PreviewScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(
-                        onClick = { vm.reset(); nav.navigate(Routes.PAGER) { popUpTo(Routes.PAGER) { inclusive = false } } },
+                        onClick = {
+                            vm.reset(); revVm.reset()
+                            nav.navigate(Routes.PAGER) { popUpTo(Routes.PAGER) { inclusive = false } }
+                        },
                         shape = RoundedCornerShape(50),
                         modifier = Modifier.weight(1f),
                     ) { Text("New") }
@@ -96,7 +113,7 @@ fun PreviewScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { pad ->
-        if (done == null) {
+        if (done == null && revDone == null) {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
                 Text("Nothing to preview yet.", color = SlateGray)
             }
@@ -111,59 +128,108 @@ fun PreviewScreen(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // ── Conversion report ────────────────────────────────────────────
-            ConversionReport(done.sourceName, done.vdXml)
+            if (done != null) {
+                // ── Conversion report ────────────────────────────────────────────
+                ConversionReport(done.sourceName, done.vdXml, outputLabel = "VD XML")
 
-            // ── Preview tiles: Original SVG vs Generated VD ──────────────────
-            Text(
-                "Both previews are approximate (rendered via resvg, not Android's pipeline).",
-                style = MaterialTheme.typography.labelLarge,
-                color = SlateGray,
-            )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                PreviewTile("Original SVG", done.svgPreviewPng, Modifier.weight(1f))
-                PreviewTile("Generated VD",  done.vdPreviewPng,  Modifier.weight(1f))
-            }
-
-            // ── Properties panel (if analysis available + setting enabled) ───
-            if (settings.showFileProperties && done.analysisJson != null) {
-                HorizontalDivider(color = Color(0xFFE2E8F0))
-                val props = remember(done.analysisJson) {
-                    runCatching {
-                        // We don't have a File object here (the source was a URI),
-                        // so we build a minimal VectorProperties from the JSON only.
-                        com.watermelon.converter.data.model.VectorProperties.fromJson(
-                            name = done.sourceName,
-                            json = done.analysisJson,
-                        )
-                    }.getOrNull()
+                Text(
+                    "Both previews are approximate (rendered via resvg, not Android's pipeline).",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = SlateGray,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    PreviewTile("Original SVG", done.svgPreviewPng, Modifier.weight(1f))
+                    PreviewTile("Generated VD",  done.vdPreviewPng,  Modifier.weight(1f))
                 }
-                if (props != null) {
-                    VectorPropertiesPanel(props)
-                }
-            }
 
-            // ── VectorDrawable XML (collapsible card) ────────────────────────
-            var xmlExpanded by remember { mutableStateOf(false) }
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "VectorDrawable XML",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = DeepNavy,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { xmlExpanded = !xmlExpanded }) {
-                            Text(if (xmlExpanded) "Collapse" else "Expand", color = FreshTeal, fontSize = 12.sp)
+                if (settings.showFileProperties && done.analysisJson != null) {
+                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    val props = remember(done.analysisJson) {
+                        runCatching {
+                            com.watermelon.converter.data.model.VectorProperties.fromJson(
+                                name = done.sourceName,
+                                json = done.analysisJson,
+                            )
+                        }.getOrNull()
+                    }
+                    if (props != null) {
+                        VectorPropertiesPanel(props)
+                    }
+                }
+
+                var xmlExpanded by remember { mutableStateOf(false) }
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "VectorDrawable XML",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = DeepNavy,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { xmlExpanded = !xmlExpanded }) {
+                                Text(if (xmlExpanded) "Collapse" else "Expand", color = FreshTeal, fontSize = 12.sp)
+                            }
+                        }
+                        if (xmlExpanded) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(done.vdXml, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                         }
                     }
-                    if (xmlExpanded) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(done.vdXml, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+            } else if (revDone != null) {
+                // ── Conversion report (reverse direction) ────────────────────────
+                ConversionReport(revDone.sourceName, revDone.svgXml, outputLabel = "SVG")
+
+                Text(
+                    "Both previews are approximate (rendered via resvg, not Android's pipeline).",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = SlateGray,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    PreviewTile("Original VD",  revDone.vdPreviewPng,  Modifier.weight(1f))
+                    PreviewTile("Generated SVG", revDone.svgPreviewPng, Modifier.weight(1f))
+                }
+
+                if (settings.showFileProperties && revDone.analysisJson != null) {
+                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    val props = remember(revDone.analysisJson) {
+                        runCatching {
+                            com.watermelon.converter.data.model.VectorProperties.fromJson(
+                                name = revDone.sourceName,
+                                json = revDone.analysisJson,
+                            )
+                        }.getOrNull()
+                    }
+                    if (props != null) {
+                        VectorPropertiesPanel(props)
+                    }
+                }
+
+                var svgExpanded by remember { mutableStateOf(false) }
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "SVG XML",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = DeepNavy,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { svgExpanded = !svgExpanded }) {
+                                Text(if (svgExpanded) "Collapse" else "Expand", color = FreshTeal, fontSize = 12.sp)
+                            }
+                        }
+                        if (svgExpanded) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(revDone.svgXml, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
                     }
                 }
             }
@@ -172,9 +238,9 @@ fun PreviewScreen(
 }
 
 @Composable
-private fun ConversionReport(sourceName: String, vdXml: String) {
-    val lineCount = vdXml.lines().size
-    val sizeKb    = "%.1f KB".format(vdXml.toByteArray().size / 1024.0)
+private fun ConversionReport(sourceName: String, outputXml: String, outputLabel: String) {
+    val lineCount = outputXml.lines().size
+    val sizeKb    = "%.1f KB".format(outputXml.toByteArray().size / 1024.0)
 
     ElevatedCard(
         Modifier.fillMaxWidth(),
@@ -194,7 +260,7 @@ private fun ConversionReport(sourceName: String, vdXml: String) {
             }
             ReportRow("Source file", sourceName)
             ReportRow("Output size", sizeKb)
-            ReportRow("XML lines",   lineCount.toString())
+            ReportRow("$outputLabel lines", lineCount.toString())
         }
     }
 }

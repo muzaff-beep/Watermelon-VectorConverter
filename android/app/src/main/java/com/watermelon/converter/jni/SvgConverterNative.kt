@@ -47,4 +47,7 @@ object SvgConverterNative {
 
     /** Analyze a vector file's structure. Returns a JSON string (Contract C-5.0). */
     external fun nativeAnalyzeVector(bytes: ByteArray): String
+
+    /** Analyze a VectorDrawable XML file's structure (reverse direction). Same JSON shape. */
+    external fun nativeAnalyzeVdVector(bytes: ByteArray): String
 }

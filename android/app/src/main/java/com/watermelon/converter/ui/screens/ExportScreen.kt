@@ -26,6 +26,9 @@ import com.watermelon.converter.viewmodel.BatchUiState
 import com.watermelon.converter.viewmodel.BatchViewModel
 import com.watermelon.converter.viewmodel.ConversionViewModel
 import com.watermelon.converter.viewmodel.ConvertUiState
+import com.watermelon.converter.viewmodel.ReverseBatchViewModel
+import com.watermelon.converter.viewmodel.ReverseConversionViewModel
+import com.watermelon.converter.viewmodel.ReverseConvertUiState
 import com.watermelon.converter.viewmodel.SettingsViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watermelon.converter.util.OutputDestination
@@ -37,15 +40,22 @@ fun ExportScreen(
     nav: NavController,
     convVm: ConversionViewModel = nav.sharedGraphViewModel(),
     batchVm: BatchViewModel = nav.sharedGraphViewModel(),
+    revConvVm: ReverseConversionViewModel = nav.sharedGraphViewModel(),
+    revBatchVm: ReverseBatchViewModel = nav.sharedGraphViewModel(),
     settingsVm: SettingsViewModel = viewModel(),
 ) {
     val convState  by convVm.state.collectAsState()
     val batchState by batchVm.state.collectAsState()
+    val revConvState  by revConvVm.state.collectAsState()
+    val revBatchState by revBatchVm.state.collectAsState()
     val settings   by settingsVm.settings.collectAsState()
     val ctx = LocalContext.current
 
-    val hasSingle  = convState  is ConvertUiState.Done
-    val hasBatch   = batchState is BatchUiState.Done
+    val hasSingle    = convState  is ConvertUiState.Done
+    val hasBatch     = batchState is BatchUiState.Done
+    val hasRevSingle = revConvState  is ReverseConvertUiState.Done
+    val hasRevBatch  = revBatchState is BatchUiState.Done
+    val hasAny = hasSingle || hasBatch || hasRevSingle || hasRevBatch
     val hasDestination = settings.outputDestinationUri != null
 
     var exportDone by remember { mutableStateOf(false) }
@@ -57,6 +67,8 @@ fun ExportScreen(
         if (treeUri != null) {
             if (hasSingle) convVm.export(treeUri)
             if (hasBatch)  batchVm.export(treeUri)
+            if (hasRevSingle) revConvVm.export(treeUri)
+            if (hasRevBatch)  revBatchVm.export(treeUri)
             exportDone = true
         }
     }
@@ -81,7 +93,7 @@ fun ExportScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (!hasSingle && !hasBatch) {
+            if (!hasAny) {
                 Text("Nothing to export.", color = SlateGray, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             } else if (exportDone) {
                 Text("✓  Exported successfully.", color = FreshTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -96,9 +108,11 @@ fun ExportScreen(
             } else {
                 Text(
                     when {
-                        hasBatch  -> "Batch result ready to export as ZIP."
-                        hasSingle -> "VectorDrawable ready to export."
-                        else      -> ""
+                        hasBatch    -> "Batch result ready to export as ZIP."
+                        hasSingle   -> "VectorDrawable ready to export."
+                        hasRevBatch -> "Batch result ready to export as ZIP."
+                        hasRevSingle -> "SVG ready to export."
+                        else        -> ""
                     },
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -119,6 +133,8 @@ fun ExportScreen(
                         onClick = {
                             if (hasSingle) convVm.export()
                             if (hasBatch)  batchVm.exportToSettings()
+                            if (hasRevSingle) revConvVm.export()
+                            if (hasRevBatch)  revBatchVm.exportToSettings()
                             exportDone = true
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),

@@ -17,18 +17,33 @@ import androidx.navigation.NavController
 import com.watermelon.converter.ui.sharedGraphViewModel
 import com.watermelon.converter.viewmodel.BatchUiState
 import com.watermelon.converter.viewmodel.BatchViewModel
+import com.watermelon.converter.viewmodel.ReverseBatchViewModel
 import com.watermelon.converter.ui.components.SeedBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BatchScreen(nav: NavController, vm: BatchViewModel = nav.sharedGraphViewModel()) {
-    val state by vm.state.collectAsState()
-    val reportSaveState by vm.reportSaveState.collectAsState()
+fun BatchScreen(
+    nav: NavController,
+    reverse: Boolean = false,
+    vm: BatchViewModel = nav.sharedGraphViewModel(),
+    revVm: ReverseBatchViewModel = nav.sharedGraphViewModel(),
+) {
+    // Only one of these VMs is actually used, chosen by `reverse`, but Kotlin
+    // has no shared supertype for their identical-shaped methods — so we
+    // dispatch through small local lambdas instead of duplicating this screen.
+    val state by (if (reverse) revVm.state else vm.state).collectAsState()
+    val reportSaveState by (if (reverse) revVm.reportSaveState else vm.reportSaveState).collectAsState()
+    val onCancel: () -> Unit = { if (reverse) revVm.cancel() else vm.cancel() }
+    val onReset: () -> Unit = { if (reverse) revVm.reset() else vm.reset() }
+    val onSaveReport: () -> Unit = { if (reverse) revVm.saveReport() else vm.saveReport() }
+    val onDismiss: () -> Unit = { if (reverse) revVm.dismissReport() else vm.dismissReport(); nav.popBackStack() }
+    val onPick: (android.net.Uri) -> Unit = { uri -> if (reverse) revVm.convertZip(uri) else vm.convertZip(uri) }
+
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.convertZip(uri) }
+    ) { uri -> if (uri != null) onPick(uri) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Batch convert") }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(if (reverse) "Batch convert (XML → SVG)" else "Batch convert") }) }) { pad ->
         Column(
             modifier = Modifier.fillMaxSize().padding(pad).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -58,23 +73,23 @@ fun BatchScreen(nav: NavController, vm: BatchViewModel = nav.sharedGraphViewMode
                         Text("Reading archive…")
                     }
                     Spacer(Modifier.height(12.dp))
-                    OutlinedButton(onClick = { vm.cancel() }) { Text("Cancel") }
+                    OutlinedButton(onClick = onCancel) { Text("Cancel") }
                 }
                 is BatchUiState.Error -> {
                     Text("Batch failed", style = MaterialTheme.typography.titleLarge)
                     Text(s.message, color = MaterialTheme.colorScheme.error)
-                    Button(onClick = { vm.reset() }) { Text("Try again") }
+                    Button(onClick = onReset) { Text("Try again") }
                 }
                 is BatchUiState.Done -> {
                     com.watermelon.converter.ui.components.ReportPanel(
                         report = s.report,
-                        onSaveReport = { vm.saveReport() },
-                        onDismiss = { vm.dismissReport(); nav.popBackStack() },
+                        onSaveReport = onSaveReport,
+                        onDismiss = onDismiss,
                         saveState = reportSaveState,
                     )
                 }
                 else -> {
-                    Text("Pick a .zip of SVG files.")
+                    Text(if (reverse) "Pick a .zip of VectorDrawable XML files." else "Pick a .zip of SVG files.")
                     Button(
                         onClick = { picker.launch(arrayOf("application/zip", "application/octet-stream")) },
                         modifier = Modifier.fillMaxWidth()

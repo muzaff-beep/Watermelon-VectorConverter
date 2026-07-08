@@ -259,6 +259,21 @@ pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nati
     CANCEL.store(true, Ordering::SeqCst);
 }
 
+fn analysis_json(a: &crate::analysis::VectorAnalysis) -> String {
+    format!(
+        r#"{{"width":{w},"height":{h},"viewportW":{vw},"viewportH":{vh},"pathCount":{pc},"groupCount":{gc},"usesPaths":{up},"usesGradients":{ug},"usesSolidColors":{us},"usesStrokes":{ust},"singleColorTintable":{sct},"tintColor":{tc},"isAnimated":{ia}}}"#,
+        w = a.width, h = a.height, vw = a.viewport_w, vh = a.viewport_h,
+        pc = a.path_count, gc = a.group_count,
+        up = a.uses_paths, ug = a.uses_gradients, us = a.uses_solid_colors,
+        ust = a.uses_strokes, sct = a.single_color_tintable,
+        tc = match &a.tint_color {
+            Some(c) => format!("\"{}\"", c),
+            None => "null".to_string(),
+        },
+        ia = a.is_animated,
+    )
+}
+
 /// nativeAnalyzeVector(bytes: ByteArray): String  [Contract C-5.0]
 /// Returns a JSON string describing the vector's structure, or throws
 /// ConversionException on failure.
@@ -276,21 +291,28 @@ pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nati
         Err(e) => { throw_conversion(&mut env, &e); return null; }
     };
     match crate::analyze_vector(&data) {
-        Ok(a) => {
-            let json = format!(
-                r#"{{"width":{w},"height":{h},"viewportW":{vw},"viewportH":{vh},"pathCount":{pc},"groupCount":{gc},"usesPaths":{up},"usesGradients":{ug},"usesSolidColors":{us},"usesStrokes":{ust},"singleColorTintable":{sct},"tintColor":{tc},"isAnimated":{ia}}}"#,
-                w = a.width, h = a.height, vw = a.viewport_w, vh = a.viewport_h,
-                pc = a.path_count, gc = a.group_count,
-                up = a.uses_paths, ug = a.uses_gradients, us = a.uses_solid_colors,
-                ust = a.uses_strokes, sct = a.single_color_tintable,
-                tc = match &a.tint_color {
-                    Some(c) => format!("\"{}\"", c),
-                    None => "null".to_string(),
-                },
-                ia = a.is_animated,
-            );
-            env.new_string(&json).map(|s| s.into_raw()).unwrap_or(null)
-        }
+        Ok(a) => env.new_string(&analysis_json(&a)).map(|s| s.into_raw()).unwrap_or(null),
+        Err(e) => { throw_conversion(&mut env, &e); null }
+    }
+}
+
+/// nativeAnalyzeVdVector(bytes: ByteArray): String  [reverse direction analysis]
+/// Same JSON shape as nativeAnalyzeVector, but for VectorDrawable XML input.
+#[no_mangle]
+pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeAnalyzeVdVector<
+    'a,
+>(
+    mut env: JNIEnv<'a>,
+    _cls: JClass<'a>,
+    bytes: JByteArray<'a>,
+) -> jstring {
+    let null = JObject::null().into_raw();
+    let data = match bytes_from(&mut env, &bytes) {
+        Ok(b) => b,
+        Err(e) => { throw_conversion(&mut env, &e); return null; }
+    };
+    match crate::analyze_vd_vector(&data) {
+        Ok(a) => env.new_string(&analysis_json(&a)).map(|s| s.into_raw()).unwrap_or(null),
         Err(e) => { throw_conversion(&mut env, &e); null }
     }
 }

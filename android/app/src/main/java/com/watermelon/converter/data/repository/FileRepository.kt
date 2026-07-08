@@ -48,6 +48,10 @@ class FileRepository(private val context: Context) {
     fun xmlNameFor(svgName: String): String =
         svgName.substringBeforeLast('.', svgName).let { "$it.xml" }
 
+    /** Suggested .svg name from an input .xml display name (reverse direction). */
+    fun svgNameFor(xmlName: String): String =
+        xmlName.substringBeforeLast('.', xmlName).let { "$it.svg" }
+
     /** Best-effort display name for a content uri. */
     fun displayName(uri: Uri): String =
         DocumentFile.fromSingleUri(context, uri)?.name ?: "image.svg"

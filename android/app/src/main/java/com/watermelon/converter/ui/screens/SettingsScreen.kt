@@ -155,6 +155,27 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = viewModel()) {
 
             HorizontalDivider()
 
+            // History row
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { nav.navigate(com.watermelon.converter.Routes.HISTORY) }
+                    .padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("History", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = DeepNavy)
+                    Text(
+                        "Past conversions, successes and errors",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = SlateGray,
+                    )
+                }
+                Text("›", fontSize = 20.sp, color = SlateGray)
+            }
+
+            HorizontalDivider()
+
             // About row
             Row(
                 Modifier

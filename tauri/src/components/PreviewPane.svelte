@@ -2,6 +2,12 @@
   export let svgPreviewPng = null;
   export let vdPreviewPng  = null;
   export let vdXml = "";
+  /** "forward" (SVG->XML, default) or "reverse" (XML->SVG) — only changes labels. */
+  export let direction = "forward";
+
+  $: leftLabel  = direction === "reverse" ? "Original VD"  : "Original SVG";
+  $: rightLabel = direction === "reverse" ? "Generated SVG" : "Generated VD";
+  $: codeTitle  = direction === "reverse" ? "SVG XML" : "VectorDrawable XML";
 
   let xmlExpanded = false;
 
@@ -17,17 +23,17 @@
 
 <div class="preview-row">
   <div class="preview-tile">
-    <p class="tile-label">Original SVG</p>
+    <p class="tile-label">{leftLabel}</p>
     {#if svgUrl}
-      <img src={svgUrl} alt="SVG preview" />
+      <img src={svgUrl} alt="{leftLabel} preview" />
     {:else}
       <div class="placeholder">No preview</div>
     {/if}
   </div>
   <div class="preview-tile">
-    <p class="tile-label">Generated VD</p>
+    <p class="tile-label">{rightLabel}</p>
     {#if vdUrl}
-      <img src={vdUrl} alt="VectorDrawable preview" />
+      <img src={vdUrl} alt="{rightLabel} preview" />
     {:else}
       <div class="placeholder">No preview</div>
     {/if}
@@ -37,7 +43,7 @@
 {#if vdXml}
   <div class="xml-card">
     <div class="xml-header">
-      <span class="xml-title">VectorDrawable XML</span>
+      <span class="xml-title">{codeTitle}</span>
       <button class="expand-btn" on:click={() => xmlExpanded = !xmlExpanded}>
         {xmlExpanded ? "Collapse" : "Expand"}
       </button>

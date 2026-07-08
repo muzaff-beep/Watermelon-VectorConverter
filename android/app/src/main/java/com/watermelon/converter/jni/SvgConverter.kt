@@ -22,6 +22,9 @@ interface SvgConverter {
     fun cancel()
     /** Analyze a vector file's structure. Returns a JSON string (Contract C-5.0). */
     fun analyzeVector(bytes: ByteArray): String
+
+    /** Analyze a VectorDrawable XML file's structure (reverse direction). Same JSON shape. */
+    fun analyzeVdVector(bytes: ByteArray): String
 }
 
 /** Production implementation — calls into libsvg_converter_core.so (Contract C-3). */
@@ -39,4 +42,6 @@ object RealSvgConverter : SvgConverter {
     override fun cancel() = SvgConverterNative.nativeCancel()
     override fun analyzeVector(bytes: ByteArray) =
         SvgConverterNative.nativeAnalyzeVector(bytes)
+    override fun analyzeVdVector(bytes: ByteArray) =
+        SvgConverterNative.nativeAnalyzeVdVector(bytes)
 }

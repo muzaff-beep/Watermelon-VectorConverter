@@ -20,6 +20,25 @@ fn invalid_svg_maps_to_error() {
     assert!(!err.message.is_empty());
 }
 
+const VD: &[u8] = br##"<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M2,2 L22,2 L22,22 Z" android:fillColor="#FFFF0000"/>
+</vector>"##;
+
+#[test]
+fn convert_vd_ok() {
+    let svg = do_convert_vd(VD.to_vec()).unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("d=\"M2,2 L22,2 L22,22 Z\""));
+}
+
+#[test]
+fn invalid_vd_maps_to_error() {
+    let err = do_convert_vd(b"<not-a-vector/>".to_vec()).unwrap_err();
+    assert!(err.code >= 1001 && err.code <= 1099);
+    assert!(!err.message.is_empty());
+}
+
 #[test]
 fn svg_preview_returns_png() {
     let png = do_render_svg_preview(SVG.to_vec(), 48).unwrap();

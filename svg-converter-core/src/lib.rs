@@ -50,3 +50,8 @@ pub fn convert_vd(vd_xml: &[u8]) -> Result<String, ConversionError> {
 pub fn analyze_vector(bytes: &[u8]) -> Result<analysis::VectorAnalysis, ConversionError> {
     analysis::analyze(bytes)
 }
+
+/// Analyze a VectorDrawable XML file's structure (reverse direction).
+pub fn analyze_vd_vector(bytes: &[u8]) -> Result<analysis::VectorAnalysis, ConversionError> {
+    analysis::analyze_vd(bytes)
+}

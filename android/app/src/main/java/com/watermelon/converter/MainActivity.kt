@@ -60,6 +60,7 @@ object Routes {
     const val PAGER = "pager"          // Home + Files + Settings (swipeable)
     const val PREVIEW = "preview"
     const val BATCH = "batch"
+    const val BATCH_REVERSE = "batch_reverse"
     const val EXPORT = "export"
     const val HISTORY = "history"
     const val ABOUT = "about"
@@ -71,7 +72,8 @@ fun AppNavHost(settingsVm: SettingsViewModel) {
     NavHost(navController = nav, startDestination = Routes.PAGER) {
         composable(Routes.PAGER) { MainPager(nav, settingsVm) }
         composable(Routes.PREVIEW) { PreviewScreen(nav) }
-        composable(Routes.BATCH) { BatchScreen(nav) }
+        composable(Routes.BATCH) { BatchScreen(nav, reverse = false) }
+        composable(Routes.BATCH_REVERSE) { BatchScreen(nav, reverse = true) }
         composable(Routes.EXPORT) { ExportScreen(nav) }
         composable(Routes.HISTORY) { HistoryScreen(nav) }
         composable(Routes.ABOUT) { AboutScreen(nav) }

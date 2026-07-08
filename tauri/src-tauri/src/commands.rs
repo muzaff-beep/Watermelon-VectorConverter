@@ -7,8 +7,11 @@
 //! #[tauri::command] wrappers are thin delegation only.
 
 use serde::{Deserialize, Serialize};
-use svg_converter_core::batch_processor::{convert_zip as core_convert_zip, ProgressEvent};
+use svg_converter_core::batch_processor::{
+    convert_zip as core_convert_zip, convert_vd_zip as core_convert_vd_zip, ProgressEvent,
+};
 use svg_converter_core::convert_svg as core_convert_svg;
+use svg_converter_core::convert_vd as core_convert_vd;
 use svg_converter_core::error::ConversionError;
 use svg_converter_core::image_export::{
     render_svg_preview as core_render_svg, render_vd_preview as core_render_vd,
@@ -57,6 +60,11 @@ pub fn do_convert_svg(svg: Vec<u8>) -> Result<String, ConversionErrorDto> {
     core_convert_svg(&svg).map_err(Into::into)
 }
 
+/// Reverse direction: VectorDrawable XML bytes -> SVG string.
+pub fn do_convert_vd(vd_xml: Vec<u8>) -> Result<String, ConversionErrorDto> {
+    core_convert_vd(&vd_xml).map_err(Into::into)
+}
+
 pub fn do_render_svg_preview(svg: Vec<u8>, px: u32) -> Result<Vec<u8>, ConversionErrorDto> {
     core_render_svg(&svg, px).map_err(Into::into)
 }
@@ -71,6 +79,12 @@ pub fn do_render_vd_preview(vd_xml: String, px: u32) -> Result<Vec<u8>, Conversi
 #[tauri::command]
 pub fn convert_svg(svg: Vec<u8>) -> Result<String, ConversionErrorDto> {
     do_convert_svg(svg)
+}
+
+/// Reverse direction: convert a single VectorDrawable XML file (bytes) → SVG string.
+#[tauri::command]
+pub fn convert_vd(vd_xml: Vec<u8>) -> Result<String, ConversionErrorDto> {
+    do_convert_vd(vd_xml)
 }
 
 /// Render an SVG preview PNG at the requested pixel size.
@@ -97,6 +111,25 @@ pub fn convert_zip(
         &zip,
         &|e: ProgressEvent| {
             // Emit progress to the frontend. Ignore emit errors (window may close).
+            let _ = window.emit("batch://progress", BatchProgressDto::from(e));
+        },
+        &cancel,
+    );
+    result.map_err(Into::into)
+}
+
+/// Reverse batch: ZIP of VectorDrawable .xml files → ZIP of .svg files.
+/// Emits "batch://progress" events on the same channel as convert_zip — the
+/// frontend already listens once and only one batch direction runs at a time.
+#[tauri::command]
+pub fn convert_vd_zip(
+    window: tauri::Window,
+    zip: Vec<u8>,
+) -> Result<Vec<u8>, ConversionErrorDto> {
+    let cancel = AtomicBool::new(false);
+    let result = core_convert_vd_zip(
+        &zip,
+        &|e: ProgressEvent| {
             let _ = window.emit("batch://progress", BatchProgressDto::from(e));
         },
         &cancel,

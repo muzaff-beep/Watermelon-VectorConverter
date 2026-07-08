@@ -3,7 +3,10 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { readFile } from "@tauri-apps/plugin-fs";
   const dispatch = createEventDispatcher();
-  export let accept = ".svg";
+  export let accept = ".svg"; // ".svg" | ".xml" | ".zip"
+
+  $: extWord = accept === ".zip" ? "ZIP" : accept === ".xml" ? "XML" : "SVG";
+  $: fileExt = accept === ".zip" ? "zip" : accept === ".xml" ? "xml" : "svg";
 
   let dragOver = false;
 
@@ -27,8 +30,7 @@
   }
 
   async function onClick() {
-    const ext = accept === ".zip" ? "zip" : "svg";
-    const path = await open({ filters: [{ name: ext.toUpperCase(), extensions: [ext] }], multiple: false });
+    const path = await open({ filters: [{ name: extWord, extensions: [fileExt] }], multiple: false });
     if (!path) return;
     const bytes = await readFile(path);
     dispatch("file", { bytes, name: path.split(/[\\/]/).pop() });
@@ -48,7 +50,7 @@
   aria-label="Drop or click to choose file"
 >
   <span class="drop-icon">📂</span>
-  <p class="drop-label">Drop {accept === ".zip" ? "a ZIP" : "an SVG"} here or click to browse</p>
+  <p class="drop-label">Drop {accept === ".zip" ? "a ZIP" : `an ${extWord}`} here or click to browse</p>
 </div>
 
 <style>

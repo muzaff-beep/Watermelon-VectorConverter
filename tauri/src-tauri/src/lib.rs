@@ -11,9 +11,11 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             commands::convert_svg,
+            commands::convert_vd,
             commands::render_svg_preview,
             commands::render_vd_preview,
             commands::convert_zip,
+            commands::convert_vd_zip,
             commands::open_url,
             commands::set_file_association,
             commands::get_file_association,
