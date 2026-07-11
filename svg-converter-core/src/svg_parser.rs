@@ -18,9 +18,67 @@ const UNSUPPORTED: &[&str] = &[
     "filter", "text", "tspan", "pattern", "mask", "image", "use",
 ];
 
-/// Collect all <clipPath> definitions, keyed by id. Only the first
-/// path-like child is used (VectorDrawable's <clip-path> takes one pathData
-/// string, not a compound region), matching common real-world usage.
+/// Inheritable SVG presentation properties, cascaded from ancestor <g>
+/// elements down to leaf shapes — mirrors the subset of CSS inheritance SVG
+/// actually needs for fill/stroke. Each field is the *resolved string value*
+/// as it would appear in an attribute (e.g. "none", "#ff0000", "url(#g1)"),
+/// so downstream parsing (parse_rgb, gradients::url_ref) is unchanged.
+#[derive(Debug, Clone)]
+struct StyleContext {
+    fill: Option<String>,
+    stroke: Option<String>,
+    fill_opacity: Option<f32>,
+    stroke_opacity: Option<f32>,
+    opacity: Option<f32>,
+    stroke_width: Option<f32>,
+    fill_rule: Option<String>,
+}
+
+impl StyleContext {
+    fn root() -> Self {
+        StyleContext {
+            fill: None, stroke: None,
+            fill_opacity: None, stroke_opacity: None, opacity: None,
+            stroke_width: None, fill_rule: None,
+        }
+    }
+
+    /// Merge this element's own attributes/inline style over the inherited
+    /// context, producing the context to use for this element AND to pass
+    /// down to its children (SVG presentation properties inherit by default
+    /// unless the child re-specifies them).
+    fn cascade(&self, el: &roxmltree::Node) -> StyleContext {
+        let inline = parse_inline_style(el.attribute("style").unwrap_or(""));
+        let get = |name: &str| -> Option<String> {
+            inline.get(name).cloned().or_else(|| el.attribute(name).map(|s| s.to_string()))
+        };
+        StyleContext {
+            fill: get("fill").or_else(|| self.fill.clone()),
+            stroke: get("stroke").or_else(|| self.stroke.clone()),
+            fill_opacity: get("fill-opacity").and_then(|s| s.parse().ok()).or(self.fill_opacity),
+            stroke_opacity: get("stroke-opacity").and_then(|s| s.parse().ok()).or(self.stroke_opacity),
+            opacity: get("opacity").and_then(|s| s.parse().ok()).or(self.opacity),
+            stroke_width: get("stroke-width").and_then(|s| s.parse().ok()).or(self.stroke_width),
+            fill_rule: get("fill-rule").or_else(|| self.fill_rule.clone()),
+        }
+    }
+}
+
+/// Parse `style="fill:#ff0000; stroke: none; fill-opacity:0.5"` into a map.
+/// Deliberately minimal: no CSS specificity, no selectors, no !important —
+/// just the inline-style declaration list SVG exporters commonly emit.
+fn parse_inline_style(style: &str) -> std::collections::HashMap<String, String> {
+    style
+        .split(';')
+        .filter_map(|decl| {
+            let mut parts = decl.splitn(2, ':');
+            let prop = parts.next()?.trim();
+            let val = parts.next()?.trim();
+            if prop.is_empty() || val.is_empty() { return None; }
+            Some((prop.to_string(), val.to_string()))
+        })
+        .collect()
+}
 fn collect_clip_paths(doc: &roxmltree::Document) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     for node in doc.descendants().filter(|n| n.has_tag_name("clipPath")) {
@@ -78,9 +136,10 @@ pub fn parse(svg_bytes: &[u8]) -> Result<NormalizedSvg, ConversionError> {
 
     let grads = gradients::collect(&doc);
     let clips = collect_clip_paths(&doc);
+    let root_style = StyleContext::root().cascade(&root);
     let mut nodes = Vec::new();
     for child in root.children().filter(|n| n.is_element()) {
-        if let Some(n) = parse_node(&child, &grads, &clips)? {
+        if let Some(n) = parse_node(&child, &grads, &clips, &root_style)? {
             nodes.push(n);
         }
     }
@@ -108,14 +167,15 @@ fn parse_viewbox(root: &roxmltree::Node) -> Result<(f32, f32), ConversionError> 
     }
 }
 
-fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &BTreeMap<String, String>) -> Result<Option<Node>, ConversionError> {
+fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &BTreeMap<String, String>, ctx: &StyleContext) -> Result<Option<Node>, ConversionError> {
     let tag = el.tag_name().name();
+    let own_ctx = ctx.cascade(el);
     match tag {
         "path" => {
             let d = el.attribute("d")
                 .ok_or_else(|| ConversionError::InvalidSvg("<path> missing d".into()))?;
             let path_data = normalize_path_data(d)?;
-            let vd_path = style_path(el, path_data, grads)?;
+            let vd_path = style_path(el, path_data, grads, &own_ctx)?;
             // If the <path> itself carries a transform (common in VTracer output
             // where every path has translate(x,y) instead of being inside a <g>),
             // wrap it in a VdGroup so the position is preserved. Without this,
@@ -134,7 +194,7 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &
             let mut group = parse_group_transform(el);
             group.clip_path = resolve_clip_path(el, clips);
             for child in el.children().filter(|n| n.is_element()) {
-                if let Some(n) = parse_node(&child, grads, clips)? {
+                if let Some(n) = parse_node(&child, grads, clips, &own_ctx)? {
                     group.children.push(n);
                 }
             }
@@ -154,7 +214,7 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &
             match raw {
                 Some(d) => {
                     let path_data = normalize_path_data(&d)?;
-                    let vd_path = style_path(el, path_data, grads)?;
+                    let vd_path = style_path(el, path_data, grads, &own_ctx)?;
                     let own_clip = resolve_clip_path(el, clips);
                     if own_clip.is_some() {
                         let mut group = VdGroup { clip_path: own_clip, ..VdGroup::default() };
@@ -172,15 +232,17 @@ fn parse_node(el: &roxmltree::Node, grads: &BTreeMap<String, Gradient>, clips: &
 }
 
 /// Apply fill/stroke/opacity styling to an already-normalized path-data string.
-fn style_path(el: &roxmltree::Node, path_data: String, grads: &BTreeMap<String, Gradient>)
+fn style_path(el: &roxmltree::Node, path_data: String, grads: &BTreeMap<String, Gradient>, ctx: &StyleContext)
     -> Result<VdPath, ConversionError>
 {
-    let opacity = attr_f32(el, "opacity").unwrap_or(1.0);
-    let fill_opacity = attr_f32(el, "fill-opacity").unwrap_or(1.0) * opacity;
-    let stroke_opacity = attr_f32(el, "stroke-opacity").unwrap_or(1.0) * opacity;
+    let opacity = ctx.opacity.unwrap_or(1.0);
+    let fill_opacity = ctx.fill_opacity.unwrap_or(1.0) * opacity;
+    let stroke_opacity = ctx.stroke_opacity.unwrap_or(1.0) * opacity;
 
     // SVG default fill is black; "none" disables; url(#id) is a gradient.
-    let fill_raw = el.attribute("fill").unwrap_or("black");
+    // ctx.fill already reflects inline style="" and ancestor <g fill> —
+    // this element's own fill/style (if any) always wins, per cascade().
+    let fill_raw = ctx.fill.as_deref().unwrap_or("black");
     let fill = if fill_raw.trim().eq_ignore_ascii_case("none") {
         Fill::None
     } else if let Some(id) = gradients::url_ref(fill_raw) {
@@ -195,15 +257,20 @@ fn style_path(el: &roxmltree::Node, path_data: String, grads: &BTreeMap<String, 
         }
     };
 
-    let stroke_color = el.attribute("stroke")
+    let stroke_color = ctx.stroke.as_deref()
         .and_then(parse_rgb)
         .map(|rgb| to_aarrggbb(rgb, stroke_opacity));
-    let stroke_width = attr_f32(el, "stroke-width").unwrap_or(0.0);
+    let stroke_width = ctx.stroke_width.unwrap_or(0.0);
 
-    let fill_type = match el.attribute("fill-rule") {
+    let fill_type = match ctx.fill_rule.as_deref() {
         Some("evenodd") => FillType::EvenOdd,
         _ => FillType::NonZero,
     };
+
+    // Suppress unused-warning for el: kept in the signature since callers
+    // already have it in scope and future style needs (e.g. id-based CSS
+    // class matching) will likely need it again.
+    let _ = el;
 
     Ok(VdPath { path_data, fill, stroke_color, stroke_width, fill_type })
 }

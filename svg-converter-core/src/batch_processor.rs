@@ -141,6 +141,29 @@ fn swap_ext(name: &str, new_ext: &str) -> String {
     }
 }
 
+/// Package several loose files into one ZIP archive in memory. Used when the
+/// person selects/drops multiple loose files at once — they're zipped here
+/// so the existing convert_zip/convert_vd_zip batch path can handle them
+/// uniformly, rather than duplicating the batch pipeline for a "list of
+/// files" input shape.
+pub fn zip_files_into_archive(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, ConversionError> {
+    let mut out = Vec::new();
+    {
+        let mut zw = zip::ZipWriter::new(Cursor::new(&mut out));
+        let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in files {
+            zw.start_file(name, opts)
+                .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+            zw.write_all(bytes)
+                .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+        }
+        zw.finish()
+            .map_err(|e| ConversionError::ZipWriteError(e.to_string()))?;
+    }
+    Ok(out)
+}
+
 /// C-4 batch: Convert every .xml in `zip_bytes` (VectorDrawable) to .svg,
 /// returning a new ZIP. Mirrors convert_zip exactly, mapped to the reverse
 /// direction — kept as a separate function rather than a flag on convert_zip

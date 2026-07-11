@@ -16,6 +16,7 @@ pub fn run() {
             commands::render_vd_preview,
             commands::convert_zip,
             commands::convert_vd_zip,
+            commands::zip_loose_files,
             commands::open_url,
             commands::set_file_association,
             commands::get_file_association,

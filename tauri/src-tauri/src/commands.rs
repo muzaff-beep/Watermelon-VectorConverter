@@ -8,7 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 use svg_converter_core::batch_processor::{
-    convert_zip as core_convert_zip, convert_vd_zip as core_convert_vd_zip, ProgressEvent,
+    convert_zip as core_convert_zip, convert_vd_zip as core_convert_vd_zip,
+    zip_files_into_archive, ProgressEvent,
 };
 use svg_converter_core::convert_svg as core_convert_svg;
 use svg_converter_core::convert_vd as core_convert_vd;
@@ -101,11 +102,18 @@ pub fn render_vd_preview(vd_xml: String, px: u32) -> Result<Vec<u8>, ConversionE
 
 /// Batch-convert a ZIP of SVG files → ZIP of VectorDrawable XML files.
 /// Emits "batch://progress" events to the frontend as each file completes.
+///
+/// Takes the raw request body instead of a Vec<u8> parameter: JSON-encoding
+/// a large ZIP as a `number[]` (Tauri's default IPC for Vec<u8>) is slow
+/// enough to look like a hang for real-world batch sizes. The frontend must
+/// send this as a raw ArrayBuffer/Uint8Array body, not a JSON `{ zip: [...] }`
+/// argument.
 #[tauri::command]
 pub fn convert_zip(
     window: tauri::Window,
-    zip: Vec<u8>,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<Vec<u8>, ConversionErrorDto> {
+    let zip = raw_body_bytes(&request)?;
     let cancel = AtomicBool::new(false);
     let result = core_convert_zip(
         &zip,
@@ -121,11 +129,13 @@ pub fn convert_zip(
 /// Reverse batch: ZIP of VectorDrawable .xml files → ZIP of .svg files.
 /// Emits "batch://progress" events on the same channel as convert_zip — the
 /// frontend already listens once and only one batch direction runs at a time.
+/// See convert_zip's doc comment for why this takes a raw Request body.
 #[tauri::command]
 pub fn convert_vd_zip(
     window: tauri::Window,
-    zip: Vec<u8>,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<Vec<u8>, ConversionErrorDto> {
+    let zip = raw_body_bytes(&request)?;
     let cancel = AtomicBool::new(false);
     let result = core_convert_vd_zip(
         &zip,
@@ -135,6 +145,35 @@ pub fn convert_vd_zip(
         &cancel,
     );
     result.map_err(Into::into)
+}
+
+/// Extract raw bytes from an IPC request body, rejecting non-binary bodies
+/// with a normal ConversionErrorDto instead of panicking.
+fn raw_body_bytes(request: &tauri::ipc::Request<'_>) -> Result<Vec<u8>, ConversionErrorDto> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok(bytes.clone()),
+        _ => Err(ConversionErrorDto {
+            code: 1000,
+            message: "expected a raw binary request body".to_string(),
+        }),
+    }
+}
+
+/// One loose file selected/dropped alongside others, to be zipped together
+/// before running through the existing batch path.
+#[derive(Deserialize)]
+pub struct LooseFile {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Package multiple loose files (selected/dropped together, not already a
+/// ZIP) into one in-memory ZIP, so the frontend's "multi-select" case can
+/// reuse convert_zip/convert_vd_zip rather than a separate pipeline.
+#[tauri::command]
+pub fn zip_loose_files(files: Vec<LooseFile>) -> Result<Vec<u8>, ConversionErrorDto> {
+    let pairs: Vec<(String, Vec<u8>)> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+    zip_files_into_archive(&pairs).map_err(Into::into)
 }
 
 /// Open a URL in the system default browser.

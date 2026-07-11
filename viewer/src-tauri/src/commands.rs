@@ -12,8 +12,14 @@ pub struct ViewerErrorDto {
     pub message: String,
 }
 
-impl<T: std::fmt::Display> From<T> for ViewerErrorDto {
-    fn from(e: T) -> Self {
+impl From<std::io::Error> for ViewerErrorDto {
+    fn from(e: std::io::Error) -> Self {
+        ViewerErrorDto { message: e.to_string() }
+    }
+}
+
+impl From<svg_converter_core::error::ConversionError> for ViewerErrorDto {
+    fn from(e: svg_converter_core::error::ConversionError) -> Self {
         ViewerErrorDto { message: e.to_string() }
     }
 }

@@ -6,18 +6,19 @@
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE.md)
 [![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20Windows%20%7C%20Linux-brightgreen)]()
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-1.5-red)]()
+[![Version](https://img.shields.io/badge/version-2.0-red)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange)](https://www.rust-lang.org/)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-green?logo=android)](https://developer.android.com/)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-purple?logo=tauri)](https://tauri.app/)
 
-**A fast, fully offline, multiplatform converter from SVG vector graphics to Android VectorDrawable XML.**
+**A fast, fully offline, multiplatform converter between SVG vector graphics
+and Android VectorDrawable XML — in both directions.**
 
-Convert single SVG files or large ZIP batches into high-fidelity Android
-`VectorDrawable` XML, with an approximate dual visual preview and flexible
-export — entirely offline, with zero network calls.
+Convert single files, multiple loose files, or ZIP batches between `.svg`
+and Android `VectorDrawable` `.xml`, with an approximate dual visual preview
+and flexible export — entirely offline, with zero network calls.
 
 > **Copyright © 2026 Suhail Muzaffari. All rights reserved.**
 > This is **proprietary, source-available** software. It is **not** open source.
@@ -29,45 +30,53 @@ export — entirely offline, with zero network calls.
 ## Highlights
 
 - **Offline-first.** No telemetry, no network, no external dependencies at runtime. Android builds ship without the `INTERNET` permission.
+- **Bidirectional.** SVG → VectorDrawable XML and VectorDrawable XML → SVG, both driven by the same Rust engine.
 - **One shared core.** A single high-performance Rust engine (`svg-converter-core`) drives every platform, so conversion behaves identically everywhere.
-- **Batch at scale.** Convert 500+ SVGs from a ZIP in seconds via parallel processing, with live progress and cancellation.
-- **Dual preview.** See the original SVG and the generated VectorDrawable side by side (both rendered approximately via resvg).
-- **Multiplatform.** Native Android (Jetpack Compose) and native-feeling desktop (Tauri) for Windows and Linux.
+- **Smart batching.** Drop a single file for an instant conversion, drop several loose files or a ZIP for a batch job — each ZIP you select produces its own independent output.
+- **Dual preview.** See the original file and the generated result side by side (both rendered approximately via resvg).
+- **Multiplatform.** Native Android (Jetpack Compose), native-feeling desktop (Tauri) for Windows and Linux, and a lightweight companion viewer for opening SVG/VectorDrawable files directly from the file system.
 
 ## Platforms
 
 | Platform | UI | Status |
 |----------|----|--------|
 | Android (8.0+) | Jetpack Compose + Material 3 | Native |
-| Windows 10/11 | Tauri (web frontend) | Desktop |
-| Linux | Tauri (web frontend) | Desktop |
+| Windows 10/11 | Tauri (Svelte frontend) | Desktop |
+| Linux | Tauri (Svelte frontend) | Desktop |
+| Desktop viewer (`wvgc-viewer`) | Tauri (Svelte frontend) | Companion app — registers as the default handler for `.svg`/`.xml` so double-clicking a file opens a lightweight preview window instead of the full converter |
 
 ## Architecture
 
 A single Rust core is shared across all platforms; thin platform layers
-bridge to it.
+bridge to it. Conversion works in both directions — the core exposes
+`convert_svg`/`convert_vd` (single file) and `batch_processor::{convert_zip,
+convert_vd_zip}` (batch), all built on the same parse → normalize → emit
+pipeline in both directions.
 
 ```
-svg-converter-core (Rust)   ← parsing, conversion, rendering, batch
+svg-converter-core (Rust)   ← SVG↔VectorDrawable parsing, conversion, rendering, batch
         │
         ├── JNI bridge       → Android (Kotlin + Jetpack Compose)
-        └── Tauri commands   → Desktop (Windows / Linux)
+        └── Tauri commands   → Desktop converter app (Windows / Linux)
+                              → Desktop viewer app (wvgc-viewer, shares the same core)
 ```
 
-The project is built and documented using the **Interface-First Execution
-Methodology**: frozen interface contracts are the governing artifact, with
-modules built in parallel against those contracts and verified automatically
-in CI. See `docs/` for the full handover package.
+The project follows an **Interface-First Execution Methodology**: interface
+contracts between the Rust core and each platform layer (JNI for Android,
+Tauri commands for desktop) are treated as the governing artifact — each
+platform is built against those contracts independently, and changes to a
+contract are made deliberately rather than incidentally.
 
 ## Repository Layout
 
 ```
-WVGC/
-├── svg-converter-core/   Rust core (parser, converter, preview, batch, FFI)
-├── android/              Android app (Compose UI, ViewModels, SAF, JNI)
-├── tauri/                Desktop app (Tauri backend + web frontend)
-├── docs/                 Contracts, ADRs, handover package, developer handbook
-├── ci/                   Interface verification, test harness, packaging
+Watermelon-VectorConverter/
+├── svg-converter-core/   Rust core: SVG↔VectorDrawable parsing, conversion,
+│                         preview rendering, batch processing, analysis, FFI
+├── android/              Android app (Compose UI, ViewModels, JNI bridge)
+├── tauri/                Desktop converter app (Tauri backend + Svelte frontend)
+├── viewer/               Desktop companion viewer (separate Tauri binary,
+│                         wvgc-viewer — file-association handler for .svg/.xml)
 └── .github/workflows/    CI pipeline
 ```
 
