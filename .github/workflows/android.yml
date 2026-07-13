@@ -64,20 +64,45 @@ jobs:
 
       - name: Get version name
         id: version
+        # Always run, even if the Gradle build above failed — we still want
+        # whatever partial outputs exist to be picked up by the artifact
+        # upload step below, so a failed run is inspectable instead of
+        # vanishing with nothing to show for it.
+        if: always()
         run: |
           VERSION=$(grep versionName android/app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Rename APK file
         id: rename
+        if: always()
         run: |
           ORIGINAL="android/app/build/outputs/apk/release/app-release.apk"
-          NEW_NAME="android/app/build/outputs/apk/release/Watermelon_vector_converter_v${{ steps.version.outputs.version }}_app-release.apk"
-          mv $ORIGINAL $NEW_NAME
-          echo "apk_path=$NEW_NAME" >> $GITHUB_OUTPUT
+          if [ -f "$ORIGINAL" ]; then
+            NEW_NAME="android/app/build/outputs/apk/release/Watermelon_vector_converter_v${{ steps.version.outputs.version }}_app-release.apk"
+            mv "$ORIGINAL" "$NEW_NAME"
+            echo "apk_path=$NEW_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "apk_path=" >> $GITHUB_OUTPUT
+          fi
 
       - name: List APK outputs
-        run: find android/app/build/outputs/apk/release/ -name "*.apk"
+        if: always()
+        run: find android/app/build/outputs/apk/release/ -name "*.apk" || true
+
+      # Publishes the APK as a downloadable workflow-run artifact regardless
+      # of whether the run ends up green enough to cut a tagged release.
+      # This is what lets you pull down "the last build" even when a later
+      # step (or a compile error elsewhere) would otherwise mean nothing was
+      # ever published. Kept alongside the release step below — this does
+      # NOT replace it, both run.
+      - name: Upload APK artifact (always, no release/tag)
+        if: always() && steps.rename.outputs.apk_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          path: ${{ steps.rename.outputs.apk_path }}
+          retention-days: 14
 
       - name: Create GitHub Release Android
         uses: softprops/action-gh-release@v2
@@ -141,4 +166,3 @@ jobs:
             adb shell 'while [[ -z $(getprop ro.build.version.sdk) ]]; do sleep 2; done'
             adb shell input keyevent 82
             cd android && ./gradlew connectedDebugAndroidTest
-            
