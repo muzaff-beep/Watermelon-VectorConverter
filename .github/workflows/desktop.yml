@@ -87,31 +87,54 @@ jobs:
 
       - name: Get version
         id: version
+        if: always()
         shell: bash
         run: |
           VERSION=$(python3 -c "import json; print(json.load(open('tauri/src-tauri/tauri.conf.json'))['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Rename bundle files
+        if: always()
         shell: bash
         run: |
           PREFIX="Watermelon_vector_converter_v${{ steps.version.outputs.version }}_"
           find target/${{ matrix.target }}/release/bundle -type f \( \
             -name "*.exe" -o -name "*.msi" -o \
             -name "*.AppImage" -o -name "*.deb" -o \
-            -name "*.dmg" \) | while read filepath; do
+            -name "*.dmg" \) 2>/dev/null | while read filepath; do
             dir=$(dirname "$filepath")
             base=$(basename "$filepath")
             mv "$filepath" "$dir/${PREFIX}${base}"
           done
 
       - name: List bundle outputs
+        if: always()
         shell: bash
         run: |
           find target -type f \( \
             -name "*.exe" -o -name "*.msi" -o \
             -name "*.AppImage" -o -name "*.deb" -o \
-            -name "*.dmg" \) -path "*/bundle/*" | sort
+            -name "*.dmg" \) -path "*/bundle/*" 2>/dev/null | sort || true
+
+      # Publishes whatever bundle(s) this OS produced as a downloadable
+      # workflow-run artifact, regardless of whether the run is clean enough
+      # to cut a tagged release. Kept alongside the per-OS release steps
+      # below — this does NOT replace them, both run. Matrix jobs upload
+      # under distinct artifact names so all three OSes are retrievable from
+      # the same run without overwriting each other.
+      - name: Upload bundle artifact (always, no release/tag)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.label }}-v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/**/*.exe
+            target/${{ matrix.target }}/release/bundle/**/*.msi
+            target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            target/${{ matrix.target }}/release/bundle/**/*.deb
+            target/${{ matrix.target }}/release/bundle/**/*.dmg
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload release (Windows)
         if: matrix.os == 'windows-latest'
@@ -159,4 +182,3 @@ jobs:
             Single package includes the converter and the bundled viewer binary.
           files: target/${{ matrix.target }}/release/bundle/dmg/Watermelon_vector_converter_v${{ steps.version.outputs.version }}_*.dmg
           fail_on_unmatched_files: true
-          
