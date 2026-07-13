@@ -130,9 +130,9 @@ pub fn parse(svg_bytes: &[u8]) -> Result<NormalizedSvg, ConversionError> {
     }
 
     let (vw, vh) = parse_viewbox(&root)?;
-    let width = attr_f32(&root, "width").unwrap_or(vw);
-    let height = attr_f32(&root, "height").unwrap_or(vh);
-    let root_alpha = attr_f32(&root, "opacity").unwrap_or(1.0);
+    let width = svg_attr_f32(&root, "width").unwrap_or(vw);
+    let height = svg_attr_f32(&root, "height").unwrap_or(vh);
+    let root_alpha = svg_attr_f32(&root, "opacity").unwrap_or(1.0);
 
     let grads = gradients::collect(&doc);
     let clips = collect_clip_paths(&doc);
@@ -159,8 +159,8 @@ fn parse_viewbox(root: &roxmltree::Node) -> Result<(f32, f32), ConversionError> 
         return Err(ConversionError::InvalidSvg("bad viewBox".into()));
     }
     // Fall back to width/height
-    let w = attr_f32(root, "width");
-    let h = attr_f32(root, "height");
+    let w = svg_attr_f32(root, "width");
+    let h = svg_attr_f32(root, "height");
     match (w, h) {
         (Some(w), Some(h)) => Ok((w, h)),
         _ => Err(ConversionError::InvalidSvg("no viewBox or width/height".into())),
@@ -487,7 +487,7 @@ fn tokenize(d: &str) -> Result<Vec<Token>, ConversionError> {
     Ok(tokens)
 }
 
-fn attr_f32(el: &roxmltree::Node, name: &str) -> Option<f32> {
+fn svg_attr_f32(el: &roxmltree::Node, name: &str) -> Option<f32> {
     el.attribute(name).and_then(|s| {
         let t = s.trim_end_matches("px").trim();
         t.parse().ok()

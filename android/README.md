@@ -19,6 +19,9 @@ conversion core with the desktop apps via JNI.
   sensitive permission: it's granted via a system Settings screen (no
   runtime dialog), and Play Store distribution requires the app's core
   purpose to be file management to qualify for it.
+- `androidx.documentfile` is a separate, still-active dependency used only
+  by the optional custom output-destination picker (`util/OutputDestination.kt`),
+  not the file manager tab.
 
 ## Dev setup
 
@@ -65,6 +68,16 @@ beneath it:
 - **Convert XML to SVG** → same shape, for `.xml` (VectorDrawable) input.
 
 The "About" link is on this screen; "History" lives in Settings.
+
+## SVG/VectorDrawable viewer (file association)
+
+`ui/viewer/SvgViewerActivity.kt` is registered for `ACTION_VIEW` on
+`image/svg+xml`, `text/xml`, and `application/xml`, so double-tapping either
+file type elsewhere on the device (a file manager, a download notification,
+etc.) opens this lightweight preview instead of the full app. It detects SVG
+vs. VectorDrawable by the root tag (`<svg>` vs `<vector>`), not by file
+extension or declared MIME type, mirroring the desktop viewer app's
+detection logic.
 
 ## File manager tab
 

@@ -33,7 +33,4 @@ object WvgcPaths {
         batchFilesDir(ctx)
         isolatedFilesDir(ctx)
     }
-
-    /** The browsable root for the file manager. */
-    fun fileManagerRoot(ctx: Context): File = root(ctx).apply { mkdirs() }
 }

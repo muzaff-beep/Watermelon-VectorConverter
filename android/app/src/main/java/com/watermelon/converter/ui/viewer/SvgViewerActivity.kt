@@ -1,6 +1,9 @@
 // Watermelon Vector Converter
 // Copyright (c) 2026 Suhail Muzaffari. All rights reserved.
-// Lightweight viewer Activity — opened via ACTION_VIEW on image/svg+xml.
+// Lightweight viewer Activity — opened via ACTION_VIEW on SVG or
+// VectorDrawable XML files. Detects which by root tag (<svg> vs <vector>),
+// not by file extension or declared MIME type, so a misnamed file still
+// previews correctly.
 
 package com.watermelon.converter.ui.viewer
 
@@ -56,7 +59,24 @@ private fun SvgViewerScreen(uri: Uri?, onClose: () -> Unit) {
             val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
                 ?: throw Exception("Cannot read file")
             fileName = uri.lastPathSegment?.substringAfterLast('/') ?: ""
-            val pngBytes = SvgConverterNative.nativeRenderSvgPreview(bytes, 1024)
+
+            // Detect VectorDrawable XML vs. plain SVG by root tag rather than
+            // file extension or the intent's declared MIME type — a renamed
+            // or misdeclared file still previews correctly either way. This
+            // mirrors the desktop viewer's render_file_preview detection.
+            val text = String(bytes, Charsets.UTF_8)
+            val firstTag = text
+                .lineSequence()
+                .map { it.trim() }
+                .firstOrNull { it.isNotEmpty() && !it.startsWith("<?xml") }
+                ?: ""
+            val isVectorDrawable = firstTag.startsWith("<vector")
+
+            val pngBytes = if (isVectorDrawable) {
+                SvgConverterNative.nativeRenderVdPreview(text, 1024)
+            } else {
+                SvgConverterNative.nativeRenderSvgPreview(bytes, 1024)
+            }
             previewBitmap = BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.size)
         } catch (e: Exception) {
             error = e.message

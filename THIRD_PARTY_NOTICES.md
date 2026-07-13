@@ -61,15 +61,16 @@ which is the purpose of this file.
 | Component | Version (baseline) | License |
 |-----------|--------------------|---------|
 | Jetpack Compose (androidx.compose.*) | per BOM | Apache-2.0 |
-| AndroidX libraries (core, lifecycle, etc.) | per BOM | Apache-2.0 |
+| AndroidX libraries (core, lifecycle, documentfile, etc.) | per BOM | Apache-2.0 |
 | Kotlin standard library | per toolchain | Apache-2.0 |
 | cargo-ndk (build tooling) | latest | MIT / Apache-2.0 |
 
-> **Note:** `androidx.documentfile` remains a declared Gradle dependency but
-> is no longer used at runtime — the file manager reverted to `java.io.File`
-> + `MANAGE_EXTERNAL_STORAGE` instead of SAF/DocumentFile trees. Safe to
-> remove from `build.gradle.kts` in a future cleanup pass; listed here only
-> because it's still present in the dependency graph as of this writing.
+> **Correction:** an earlier revision of this file claimed `androidx.documentfile`
+> was unused dead weight. That was wrong — it's still used by
+> `util/OutputDestination.kt` for the optional custom output-destination
+> picker (Settings > choose where converted files are saved), which is a
+> separate feature from the file manager tab (that one reverted to
+> `java.io.File` + `MANAGE_EXTERNAL_STORAGE`, unrelated to this dependency).
 
 ---
 

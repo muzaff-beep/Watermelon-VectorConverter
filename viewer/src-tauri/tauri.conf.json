@@ -49,6 +49,12 @@
         "name": "SVG Image",
         "description": "Scalable Vector Graphics",
         "role": "Viewer"
+      },
+      {
+        "ext": ["xml"],
+        "name": "VectorDrawable XML",
+        "description": "Android VectorDrawable",
+        "role": "Viewer"
       }
     ]
   }

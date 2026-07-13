@@ -75,7 +75,7 @@ pub fn ellipse_to_path(el: &roxmltree::Node) -> Option<String> {
 
 fn ellipse_path(cx: f32, cy: f32, rx: f32, ry: f32) -> String {
     let n = |v: f32| fmt_num(v);
-    // Start at right edge, two半 arcs around. A handler converts to cubics.
+    // Start at right edge, two half arcs around. A handler converts to cubics.
     format!(
         "M{},{} A{},{} 0 1 1 {},{} A{},{} 0 1 1 {},{} Z",
         n(cx + rx), n(cy),
