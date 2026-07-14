@@ -17,6 +17,10 @@ use svg_converter_core::error::ConversionError;
 use svg_converter_core::image_export::{
     render_svg_preview as core_render_svg, render_vd_preview as core_render_vd,
 };
+use svg_converter_core::animation::{AnimationKind, FileKind};
+use svg_converter_core::animation_engine::{AnimationFrames, LoopMode};
+use svg_converter_core::detect_animation as core_detect_animation;
+use svg_converter_core::render_avd_frames as core_render_avd_frames;
 use std::sync::atomic::AtomicBool;
 use tauri::Emitter;
 
@@ -55,6 +59,38 @@ impl From<ProgressEvent> for BatchProgressDto {
     }
 }
 
+/// Frame sequence result for the Animation Preview Engine (Contract C-5.2).
+/// Mirrors `AnimationFrames` field-for-field; `loop_mode` is serialized as
+/// a string (not a numeric ordinal like the JNI side needs) since Tauri's
+/// normal JSON IPC handles enums-as-strings cleanly via serde, and frames
+/// go over the same normal JSON path as `Vec<Vec<u8>>` — AVD frame counts
+/// and sizes are small relative to the ZIP case that justified `convert_zip`'s
+/// raw-body optimization, so no special-casing is needed here.
+#[derive(Debug, Serialize)]
+pub struct AvdFramesDto {
+    pub width: u32,
+    pub height: u32,
+    pub frame_durations_ms: Vec<u32>,
+    pub frames: Vec<Vec<u8>>,
+    pub loop_mode: String,
+}
+
+impl From<AnimationFrames> for AvdFramesDto {
+    fn from(f: AnimationFrames) -> Self {
+        AvdFramesDto {
+            width: f.width,
+            height: f.height,
+            frame_durations_ms: f.frame_durations_ms,
+            frames: f.frames,
+            loop_mode: match f.loop_mode {
+                LoopMode::Once => "Once".to_string(),
+                LoopMode::Repeat => "Repeat".to_string(),
+                LoopMode::Reverse => "Reverse".to_string(),
+            },
+        }
+    }
+}
+
 // ── Testable logic (no Tauri dependency) ────────────────────────────────────
 
 pub fn do_convert_svg(svg: Vec<u8>) -> Result<String, ConversionErrorDto> {
@@ -72,6 +108,36 @@ pub fn do_render_svg_preview(svg: Vec<u8>, px: u32) -> Result<Vec<u8>, Conversio
 
 pub fn do_render_vd_preview(vd_xml: String, px: u32) -> Result<Vec<u8>, ConversionErrorDto> {
     core_render_vd(&vd_xml, px).map_err(Into::into)
+}
+
+/// Detect whether a file is animated, and how (Contract C-5.1). Returns the
+/// variant name as a plain string — simplest possible contract for the
+/// frontend; unlike the JNI side there's no need for a numeric ordinal
+/// since Tauri's JSON IPC serializes this cleanly as-is.
+pub fn do_detect_animation(file_bytes: Vec<u8>, is_avd: bool) -> String {
+    let kind = if is_avd { FileKind::Avd } else { FileKind::Svg };
+    match core_detect_animation(&file_bytes, kind) {
+        AnimationKind::None => "None",
+        AnimationKind::Avd => "Avd",
+        AnimationKind::SvgSmil => "SvgSmil",
+        AnimationKind::SvgCss => "SvgCss",
+    }
+    .to_string()
+}
+
+/// Render an AVD's animation frames (Contract C-5.2). Surfaces
+/// `UnsupportedFeature` (and any other `ConversionError`) as a normal
+/// `Err(ConversionErrorDto)` — this is the expected, catchable result while
+/// the underlying C-5.2 engine is still landing, not a bug in this bridge.
+pub fn do_render_avd_frames(
+    avd_bytes: Vec<u8>,
+    fps: u32,
+    max_frames: u32,
+    px: u32,
+) -> Result<AvdFramesDto, ConversionErrorDto> {
+    core_render_avd_frames(&avd_bytes, fps, max_frames, px)
+        .map(Into::into)
+        .map_err(Into::into)
 }
 
 // ── Tauri command wrappers ───────────────────────────────────────────────────
@@ -98,6 +164,28 @@ pub fn render_svg_preview(svg: Vec<u8>, px: u32) -> Result<Vec<u8>, ConversionEr
 #[tauri::command]
 pub fn render_vd_preview(vd_xml: String, px: u32) -> Result<Vec<u8>, ConversionErrorDto> {
     do_render_vd_preview(vd_xml, px)
+}
+
+/// Detect whether a file is animated, and how (Contract C-5.1).
+/// Returns the AnimationKind variant name as a string: "None", "Avd",
+/// "SvgSmil", or "SvgCss".
+#[tauri::command]
+pub fn detect_animation(file_bytes: Vec<u8>, is_avd: bool) -> String {
+    do_detect_animation(file_bytes, is_avd)
+}
+
+/// Render an AVD's animation frames at the requested fps/frame cap/pixel
+/// size (Contract C-5.2). Returns `Err(ConversionErrorDto)` — including
+/// code 1002 (UnsupportedFeature) until the C-5.2 engine itself is fully
+/// implemented — rather than ever panicking the backend.
+#[tauri::command]
+pub fn render_avd_frames(
+    avd_bytes: Vec<u8>,
+    fps: u32,
+    max_frames: u32,
+    px: u32,
+) -> Result<AvdFramesDto, ConversionErrorDto> {
+    do_render_avd_frames(avd_bytes, fps, max_frames, px)
 }
 
 /// Batch-convert a ZIP of SVG files → ZIP of VectorDrawable XML files.

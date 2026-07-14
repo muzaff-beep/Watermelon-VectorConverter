@@ -50,4 +50,21 @@ object SvgConverterNative {
 
     /** Analyze a VectorDrawable XML file's structure (reverse direction). Same JSON shape. */
     external fun nativeAnalyzeVdVector(bytes: ByteArray): String
+
+    /**
+     * Detect whether a file is animated, and how (Contract C-5.1).
+     * Returns AnimationKind's ordinal: 0=None, 1=Avd, 2=SvgSmil, 3=SvgCss.
+     * This numbering must match jni.rs's nativeDetectAnimation match arms
+     * exactly — see [AnimationKind.fromOrdinal] for the Kotlin-side decode.
+     */
+    external fun nativeDetectAnimation(fileBytes: ByteArray, isAvd: Boolean): Int
+
+    /**
+     * Render an AVD's animation frames (Contract C-5.2). Returns a JSON
+     * string (see [AvdFramesResult.decode]) or throws [ConversionException]
+     * — including with code 1002 (UnsupportedFeature) until the C-5.2
+     * engine itself is fully implemented; that is a normal, catchable
+     * error, not a crash.
+     */
+    external fun nativeRenderAvdFrames(avdBytes: ByteArray, fps: Int, maxFrames: Int, px: Int): String
 }

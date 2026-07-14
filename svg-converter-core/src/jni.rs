@@ -316,3 +316,121 @@ pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nati
         Err(e) => { throw_conversion(&mut env, &e); null }
     }
 }
+
+/// nativeDetectAnimation(fileBytes: ByteArray, isAvd: Boolean): Int   [Contract C-5.1]
+///
+/// Returns AnimationKind's ordinal: 0=None, 1=Avd, 2=SvgSmil, 3=SvgCss.
+/// This exact numbering is part of the contract between this file and
+/// SvgConverterNative.kt's decodeAnimationKind — if animation.rs's enum
+/// variant order ever changes, this match arm (not the enum's derived
+/// discriminant) is the source of truth, so a reorder there can't silently
+/// desync the two sides.
+#[no_mangle]
+pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeDetectAnimation<
+    'a,
+>(
+    mut env: JNIEnv<'a>,
+    _cls: JClass<'a>,
+    file_bytes: JByteArray<'a>,
+    is_avd: jni::sys::jboolean,
+) -> jint {
+    let bytes = match bytes_from(&mut env, &file_bytes) {
+        Ok(b) => b,
+        // Detection never throws per its own contract (unparseable -> None),
+        // so a byte-read failure here is the only path that can reach this
+        // arm, and it degrades to None rather than surfacing a spurious
+        // exception from a function callers expect to always succeed.
+        Err(_) => return 0,
+    };
+    let kind = if is_avd != 0 {
+        crate::animation::FileKind::Avd
+    } else {
+        crate::animation::FileKind::Svg
+    };
+    match crate::detect_animation(&bytes, kind) {
+        crate::animation::AnimationKind::None => 0,
+        crate::animation::AnimationKind::Avd => 1,
+        crate::animation::AnimationKind::SvgSmil => 2,
+        crate::animation::AnimationKind::SvgCss => 3,
+    }
+}
+
+/// nativeRenderAvdFrames(avdBytes: ByteArray, fps: Int, maxFrames: Int, px: Int): String   [Contract C-5.2]
+///
+/// Returns a JSON string on success (see avd_frames_json below), following
+/// the same "JSON string, not a constructed Java object" convention already
+/// used by nativeAnalyzeVector/nativeAnalyzeVdVector in this file — chosen
+/// over a custom binary encoding for consistency with that precedent, and
+/// over constructing a Java object from JNI (more marshalling code, no
+/// existing example of it in this file to follow). PNG frame bytes are
+/// base64-encoded inside the JSON, matching how the Tauri side encodes them
+/// for its own JSON transport (see commands.rs AvdFramesDto), so the two
+/// platforms' wire formats are consistent.
+/// Throws ConversionException (via throw_conversion) on any error,
+/// including UnsupportedFeature while C-5.2's engine is still landing —
+/// that is a normal, catchable error path, not a crash.
+#[no_mangle]
+pub extern "system" fn Java_com_watermelon_converter_jni_SvgConverterNative_nativeRenderAvdFrames<
+    'a,
+>(
+    mut env: JNIEnv<'a>,
+    _cls: JClass<'a>,
+    avd_bytes: JByteArray<'a>,
+    fps: jint,
+    max_frames: jint,
+    px: jint,
+) -> jstring {
+    let null = JObject::null().into_raw();
+    let bytes = match bytes_from(&mut env, &avd_bytes) {
+        Ok(b) => b,
+        Err(e) => { throw_conversion(&mut env, &e); return null; }
+    };
+    match crate::render_avd_frames(&bytes, fps.max(0) as u32, max_frames.max(0) as u32, px.max(0) as u32) {
+        Ok(frames) => env
+            .new_string(&avd_frames_json(&frames))
+            .map(|s| s.into_raw())
+            .unwrap_or(null),
+        Err(e) => { throw_conversion(&mut env, &e); null }
+    }
+}
+
+/// Minimal base64 encoder (standard alphabet, with padding) so this module
+/// doesn't need to pull in an external base64 crate for one call site.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(b2 & 0x3f) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn avd_frames_json(f: &crate::animation_engine::AnimationFrames) -> String {
+    let loop_mode = match f.loop_mode {
+        crate::animation_engine::LoopMode::Once => "Once",
+        crate::animation_engine::LoopMode::Repeat => "Repeat",
+        crate::animation_engine::LoopMode::Reverse => "Reverse",
+    };
+    let durations = f
+        .frame_durations_ms
+        .iter()
+        .map(|d| d.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let frames_b64 = f
+        .frames
+        .iter()
+        .map(|png| format!("\"{}\"", base64_encode(png)))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        r#"{{"width":{w},"height":{h},"loopMode":"{lm}","frameDurationsMs":[{d}],"framesBase64":[{fr}]}}"#,
+        w = f.width, h = f.height, lm = loop_mode, d = durations, fr = frames_b64,
+    )
+}

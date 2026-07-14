@@ -20,6 +20,8 @@ pub fn run() {
             commands::open_url,
             commands::set_file_association,
             commands::get_file_association,
+            commands::detect_animation,
+            commands::render_avd_frames,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Watermelon Vector Converter");

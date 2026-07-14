@@ -25,6 +25,16 @@ interface SvgConverter {
 
     /** Analyze a VectorDrawable XML file's structure (reverse direction). Same JSON shape. */
     fun analyzeVdVector(bytes: ByteArray): String
+
+    /** Detect whether a file is animated, and how (Contract C-5.1). */
+    fun detectAnimation(fileBytes: ByteArray, isAvd: Boolean): AnimationKind
+
+    /**
+     * Render an AVD's animation frames (Contract C-5.2). Throws
+     * [ConversionException] on failure, including UnsupportedFeature while
+     * the underlying engine is still landing.
+     */
+    fun renderAvdFrames(avdBytes: ByteArray, fps: Int, maxFrames: Int, px: Int): AvdFramesResult
 }
 
 /** Production implementation — calls into libsvg_converter_core.so (Contract C-3). */
@@ -44,4 +54,8 @@ object RealSvgConverter : SvgConverter {
         SvgConverterNative.nativeAnalyzeVector(bytes)
     override fun analyzeVdVector(bytes: ByteArray) =
         SvgConverterNative.nativeAnalyzeVdVector(bytes)
+    override fun detectAnimation(fileBytes: ByteArray, isAvd: Boolean): AnimationKind =
+        AnimationKind.fromOrdinal(SvgConverterNative.nativeDetectAnimation(fileBytes, isAvd))
+    override fun renderAvdFrames(avdBytes: ByteArray, fps: Int, maxFrames: Int, px: Int): AvdFramesResult =
+        AvdFramesResult.decode(SvgConverterNative.nativeRenderAvdFrames(avdBytes, fps, maxFrames, px))
 }
