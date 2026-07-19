@@ -54,6 +54,9 @@
     "windows": {
       "nsis": {
         "installerHooks": "installer/hooks.nsi"
+      },
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
       }
     },
     "externalBin": [
