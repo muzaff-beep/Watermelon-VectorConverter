@@ -291,7 +291,8 @@ pub fn open_url(url: String) -> Result<(), ConversionErrorDto> {
 }
 
 /// Register or unregister the bundled viewer as the HKCU handler for a
-/// given extension ("svg" or "xml"). No-op returning an error on non-Windows.
+/// given extension ("svg" or "xml") on Windows, or as the default MIME
+/// handler via xdg-mime + a self-authored .desktop file on Linux.
 #[tauri::command]
 pub fn set_file_association(ext: String, enabled: bool) -> Result<(), ConversionErrorDto> {
     #[cfg(windows)]
@@ -299,25 +300,34 @@ pub fn set_file_association(ext: String, enabled: bool) -> Result<(), Conversion
         windows_assoc::set_association(&ext, enabled)
             .map_err(|e| ConversionErrorDto { code: 1098, message: e.to_string() })
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_assoc::set_association(&ext, enabled)
+            .map_err(|e| ConversionErrorDto { code: 1098, message: e.to_string() })
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = (ext, enabled);
         Err(ConversionErrorDto {
             code: 1098,
-            message: "File association toggling is only supported on Windows.".into(),
+            message: "File association toggling is only supported on Windows and Linux.".into(),
         })
     }
 }
 
-/// Query whether the viewer is currently the HKCU handler for a given
-/// extension. Always false on non-Windows.
+/// Query whether the viewer is currently the default handler for a given
+/// extension. Always false on unsupported platforms.
 #[tauri::command]
 pub fn get_file_association(ext: String) -> bool {
     #[cfg(windows)]
     {
         windows_assoc::is_associated(&ext)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_assoc::is_associated(&ext)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = ext;
         false
@@ -390,5 +400,175 @@ mod windows_assoc {
         hkcu.open_subkey(&ext_path)
             .and_then(|k| k.get_raw_value(PROG_ID))
             .is_ok()
+    }
+}
+
+/// Linux association. Tauri's bundler-level `fileAssociations` config is
+/// meant to auto-generate a .desktop file + MIME registration at .deb
+/// install time, but this is a known-unreliable path upstream (tauri-apps/
+/// tauri#9803: "file association... doesn't work at all [on Linux]").
+/// Rather than depend on that, this registers a REAL, self-authored
+/// .desktop file via the standard freedesktop.org mechanism (xdg-mime +
+/// update-desktop-database), the same way any other Linux app would,
+/// independent of whether Tauri's own bundler-level generation worked.
+#[cfg(target_os = "linux")]
+mod linux_assoc {
+    use std::fs;
+    use std::io::{self, Write};
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    const DESKTOP_FILE_NAME: &str = "watermelon-vector-viewer.desktop";
+    const APP_ID: &str = "watermelon-vector-viewer";
+
+    fn mime_type_for(ext: &str) -> &'static str {
+        match ext {
+            "svg" => "image/svg+xml",
+            // VectorDrawable XML has no registered public MIME type of its
+            // own; text/xml is the correct generic fallback and is what
+            // Tauri's own extension-inference would also produce.
+            _ => "text/xml",
+        }
+    }
+
+    fn applications_dir() -> io::Result<PathBuf> {
+        let home = std::env::var("HOME")
+            .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "HOME not set"))?;
+        let dir = PathBuf::from(home).join(".local/share/applications");
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    fn desktop_file_path() -> io::Result<PathBuf> {
+        Ok(applications_dir()?.join(DESKTOP_FILE_NAME))
+    }
+
+    /// Path to the sidecar viewer binary, staged alongside the main
+    /// converter executable by Tauri's externalBin bundling (no extension
+    /// on Linux, unlike the Windows .exe suffix).
+    fn viewer_exe_path() -> io::Result<PathBuf> {
+        let current = std::env::current_exe()?;
+        let dir = current.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "could not resolve executable directory")
+        })?;
+        Ok(dir.join("wvgc-viewer"))
+    }
+
+    /// Write (or ensure) the .desktop file exists, declaring every
+    /// supported MIME type up front — regardless of which single extension
+    /// is being toggled — since a .desktop file's MimeType list is global
+    /// to the file, not per-extension. Individual extensions are then
+    /// associated/disassociated purely via `xdg-mime default`/`query`,
+    /// which is the real source of truth for "is this the current
+    /// default," matching how Linux desktop environments actually decide.
+    fn ensure_desktop_file() -> io::Result<()> {
+        let exe = viewer_exe_path()?;
+        let exe_str = exe.to_string_lossy();
+        let contents = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Watermelon Vector Viewer\n\
+             Comment=Preview SVG and Android VectorDrawable files\n\
+             Exec=\"{exe}\" %f\n\
+             Terminal=false\n\
+             NoDisplay=true\n\
+             MimeType=image/svg+xml;text/xml;application/xml;\n\
+             Categories=Graphics;Viewer;\n",
+            exe = exe_str,
+        );
+        let path = desktop_file_path()?;
+        let mut file = fs::File::create(&path)?;
+        file.write_all(contents.as_bytes())?;
+        Ok(())
+    }
+
+    /// Refresh the desktop database so file managers pick up the new/
+    /// changed .desktop file without requiring a logout or reboot. Best
+    /// effort: some minimal distros lack this tool, so a missing binary is
+    /// not treated as a hard failure — the .desktop file and xdg-mime
+    /// state are still correct even if the cache refresh is skipped.
+    fn refresh_desktop_database() {
+        if let Ok(dir) = applications_dir() {
+            let _ = Command::new("update-desktop-database").arg(&dir).status();
+        }
+    }
+
+    pub fn set_association(ext: &str, enabled: bool) -> io::Result<()> {
+        ensure_desktop_file()?;
+        refresh_desktop_database();
+
+        let mime = mime_type_for(ext);
+        if enabled {
+            let status = Command::new("xdg-mime")
+                .args(["default", DESKTOP_FILE_NAME, mime])
+                .status()?;
+            if !status.success() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("xdg-mime default failed for {mime} (exit {status})"),
+                ));
+            }
+        } else {
+            // xdg-mime has no direct "unset default" — the standard
+            // approach is to remove our entry from the user's
+            // mimeapps.list, which is what xdg-mime's "default" command
+            // itself writes to. We edit that file directly rather than
+            // shelling out further, since there is no single-purpose CLI
+            // command for removal.
+            remove_default_from_mimeapps(mime)?;
+        }
+        Ok(())
+    }
+
+    /// Returns every mimeapps.list path xdg-mime is known to write to,
+    /// depending on distro/xdg-utils version — some write to
+    /// ~/.local/share/applications/mimeapps.list, others to
+    /// ~/.config/mimeapps.list. Checking only one has been observed to
+    /// silently miss the actual entry on some systems, so both are
+    /// checked/edited for the removal path.
+    fn mimeapps_list_paths() -> io::Result<Vec<PathBuf>> {
+        let home = std::env::var("HOME")
+            .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "HOME not set"))?;
+        let home = PathBuf::from(home);
+        Ok(vec![
+            home.join(".local/share/applications/mimeapps.list"),
+            home.join(".config/mimeapps.list"),
+        ])
+    }
+
+    fn remove_default_from_mimeapps(mime: &str) -> io::Result<()> {
+        for path in mimeapps_list_paths()? {
+            if !path.exists() {
+                continue;
+            }
+            let content = fs::read_to_string(&path)?;
+            let filtered: String = content
+                .lines()
+                .filter(|line| {
+                    let trimmed = line.trim();
+                    !(trimmed.starts_with(&format!("{mime}=")) && trimmed.contains(DESKTOP_FILE_NAME))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            fs::write(&path, filtered)?;
+        }
+        Ok(())
+    }
+
+    /// Reads the user's actual current default handler via `xdg-mime
+    /// query default`, rather than just checking whether our .desktop file
+    /// exists — the existence of the file doesn't mean it's the ACTIVE
+    /// default, matching the semantic of the Windows is_associated check.
+    pub fn is_associated(ext: &str) -> bool {
+        let mime = mime_type_for(ext);
+        let output = Command::new("xdg-mime")
+            .args(["query", "default", mime])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                String::from_utf8_lossy(&o.stdout).trim() == DESKTOP_FILE_NAME
+            }
+            _ => false,
+        }
     }
 }
