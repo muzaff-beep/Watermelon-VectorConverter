@@ -1,15 +1,11 @@
 <script>
-  import { createEventDispatcher } from "svelte";
-  export let label = "Button";
-  export let variant = "primary";
-  export let disabled = false;
-  const dispatch = createEventDispatcher();
+  let { label = "Button", variant = "primary", disabled = false, onclick } = $props();
 </script>
 
 <button
   class="wm-btn {variant}"
   {disabled}
-  on:click={() => dispatch("click")}
+  {onclick}
 >
   {label}
 </button>

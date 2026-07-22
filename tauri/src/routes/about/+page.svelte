@@ -35,7 +35,7 @@
   <div class="divider"></div>
 
   <div class="links">
-    <button class="link-row" on:click={() => openUrl("https://github.com/muzaff-beep/Watermelon-VectorConverter")}>
+    <button class="link-row" onclick={() => openUrl("https://github.com/muzaff-beep/Watermelon-VectorConverter")}>
       <span class="link-icon">⭐</span>
       <div class="link-text">
         <span class="link-label">GitHub Repository</span>
@@ -43,7 +43,7 @@
       </div>
     </button>
 
-    <button class="link-row" on:click={() => openUrl("mailto:so.muzaff@gmail.com")}>
+    <button class="link-row" onclick={() => openUrl("mailto:so.muzaff@gmail.com")}>
       <span class="link-icon">✉️</span>
       <div class="link-text">
         <span class="link-label">Contact</span>

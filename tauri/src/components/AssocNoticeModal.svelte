@@ -2,8 +2,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import { settings } from "../lib/settings";
 
-  let visible = !$settings.hasSeenAssocNotice;
-  let busy = false;
+  let dismissed = $state(false);
+  let visible = $derived(!dismissed && !$settings.hasSeenAssocNotice);
+  let busy = $state(false);
 
   async function enable(ext) {
     busy = true;
@@ -17,7 +18,7 @@
 
   function dismiss() {
     settings.update((s) => ({ ...s, hasSeenAssocNotice: true }));
-    visible = false;
+    dismissed = true;
   }
 
   async function enableAndDismiss(ext) {
@@ -35,13 +36,13 @@
         directly. You can change this anytime in Settings.
       </p>
       <div class="actions">
-        <button class="btn primary" disabled={busy} on:click={() => enableAndDismiss("svg")}>
+        <button class="btn primary" disabled={busy} onclick={() => enableAndDismiss("svg")}>
           Set as default for SVG
         </button>
-        <button class="btn outline" disabled={busy} on:click={() => enableAndDismiss("xml")}>
+        <button class="btn outline" disabled={busy} onclick={() => enableAndDismiss("xml")}>
           Set as default for XML
         </button>
-        <button class="btn text" disabled={busy} on:click={dismiss}>
+        <button class="btn text" disabled={busy} onclick={dismiss}>
           Not now
         </button>
       </div>

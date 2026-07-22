@@ -15,7 +15,7 @@
   import ProgressBar from "../components/ProgressBar.svelte";
 
   // ── Shared batch progress (only one batch job runs at a time) ──
-  let progDone = 0, progTotal = 0, progName = "";
+  let progDone = $state(0), progTotal = $state(0), progName = $state("");
   let unlisten = null;
   onMount(async () => {
     unlisten = await listen("batch://progress", (e) => {
@@ -24,7 +24,7 @@
     });
   });
   onDestroy(() => { if (unlisten) unlisten(); });
-  $: progPct = progTotal > 0 ? Math.round((progDone / progTotal) * 100) : 0;
+  let progPct = $derived(progTotal > 0 ? Math.round((progDone / progTotal) * 100) : 0);
 
   /**
    * Run one batch job (already-zipped bytes) through the given command,
@@ -42,17 +42,16 @@
   }
 
   // ── Section 1: SVG -> XML ──
-  let sState = "idle"; // idle | working | done | error
-  let svgBytes = null, svgPreviewPng = null, vdPreviewPng = null, vdXml = "", sourceName = "", sError = "";
-  $: vdSizeKb = vdXml ? (new TextEncoder().encode(vdXml).length / 1024).toFixed(1) : "0";
-  $: vdLines  = vdXml ? vdXml.split("\n").length : 0;
+  let sState = $state("idle"); // idle | working | done | error
+  let svgBytes = $state(null), svgPreviewPng = $state(null), vdPreviewPng = $state(null), vdXml = $state(""), sourceName = $state(""), sError = $state("");
+  let vdSizeKb = $derived(vdXml ? (new TextEncoder().encode(vdXml).length / 1024).toFixed(1) : "0");
+  let vdLines  = $derived(vdXml ? vdXml.split("\n").length : 0);
 
-  let fwdBatchState = "idle"; // idle | working | done | error
-  let fwdBatchCount = 0;
-  let fwdBatchError = "";
+  let fwdBatchState = $state("idle"); // idle | working | done | error
+  let fwdBatchCount = $state(0);
+  let fwdBatchError = $state("");
 
-  async function onFwdSingle(e) {
-    const { bytes, name } = e.detail;
+  async function onFwdSingle({ bytes, name }) {
     svgBytes = bytes; sourceName = name;
     sState = "working"; svgPreviewPng = null; vdPreviewPng = null; vdXml = "";
     try {
@@ -66,8 +65,7 @@
     } catch (err) { sError = err?.message ?? String(err); sState = "error"; }
   }
 
-  async function onFwdBatchZip(e) {
-    const { bytes, name } = e.detail;
+  async function onFwdBatchZip({ bytes, name }) {
     fwdBatchState = "working";
     try {
       await runBatchJob("convert_zip", bytes, name, "_vectors.zip");
@@ -75,11 +73,11 @@
     } catch (err) { fwdBatchError = err?.message ?? String(err); fwdBatchState = "error"; }
   }
 
-  async function onFwdBatchLoose(e) {
+  async function onFwdBatchLoose({ files }) {
     fwdBatchState = "working";
     try {
-      const files = e.detail.files.map((f) => ({ name: f.name, bytes: Array.from(f.bytes) }));
-      const zipBytes = new Uint8Array(await invoke("zip_loose_files", { files }));
+      const filesPayload = files.map((f) => ({ name: f.name, bytes: Array.from(f.bytes) }));
+      const zipBytes = new Uint8Array(await invoke("zip_loose_files", { files: filesPayload }));
       await runBatchJob("convert_zip", zipBytes, "batch.zip", "_vectors.zip");
       fwdBatchState = "done"; fwdBatchCount += 1;
     } catch (err) { fwdBatchError = err?.message ?? String(err); fwdBatchState = "error"; }
@@ -98,17 +96,16 @@
   }
 
   // ── Section 2: XML -> SVG ──
-  let rState = "idle";
-  let vdBytes = null, rVdPreviewPng = null, rSvgPreviewPng = null, svgOut = "", rSourceName = "", rError = "";
-  $: svgSizeKb = svgOut ? (new TextEncoder().encode(svgOut).length / 1024).toFixed(1) : "0";
-  $: svgLines  = svgOut ? svgOut.split("\n").length : 0;
+  let rState = $state("idle");
+  let vdBytes = $state(null), rVdPreviewPng = $state(null), rSvgPreviewPng = $state(null), svgOut = $state(""), rSourceName = $state(""), rError = $state("");
+  let svgSizeKb = $derived(svgOut ? (new TextEncoder().encode(svgOut).length / 1024).toFixed(1) : "0");
+  let svgLines  = $derived(svgOut ? svgOut.split("\n").length : 0);
 
-  let revBatchState = "idle";
-  let revBatchCount = 0;
-  let revBatchError = "";
+  let revBatchState = $state("idle");
+  let revBatchCount = $state(0);
+  let revBatchError = $state("");
 
-  async function onRevSingle(e) {
-    const { bytes, name } = e.detail;
+  async function onRevSingle({ bytes, name }) {
     vdBytes = bytes; rSourceName = name;
     rState = "working"; rVdPreviewPng = null; rSvgPreviewPng = null; svgOut = "";
     try {
@@ -122,8 +119,7 @@
     } catch (err) { rError = err?.message ?? String(err); rState = "error"; }
   }
 
-  async function onRevBatchZip(e) {
-    const { bytes, name } = e.detail;
+  async function onRevBatchZip({ bytes, name }) {
     revBatchState = "working";
     try {
       await runBatchJob("convert_vd_zip", bytes, name, "_svgs.zip");
@@ -131,11 +127,11 @@
     } catch (err) { revBatchError = err?.message ?? String(err); revBatchState = "error"; }
   }
 
-  async function onRevBatchLoose(e) {
+  async function onRevBatchLoose({ files }) {
     revBatchState = "working";
     try {
-      const files = e.detail.files.map((f) => ({ name: f.name, bytes: Array.from(f.bytes) }));
-      const zipBytes = new Uint8Array(await invoke("zip_loose_files", { files }));
+      const filesPayload = files.map((f) => ({ name: f.name, bytes: Array.from(f.bytes) }));
+      const zipBytes = new Uint8Array(await invoke("zip_loose_files", { files: filesPayload }));
       await runBatchJob("convert_vd_zip", zipBytes, "batch.zip", "_svgs.zip");
       revBatchState = "done"; revBatchCount += 1;
     } catch (err) { revBatchError = err?.message ?? String(err); revBatchState = "error"; }
@@ -153,7 +149,7 @@
     revBatchState = "idle"; revBatchCount = 0; revBatchError = "";
   }
 
-  function onDropZoneError(e) { console.error(e.detail.message); }
+  function onDropZoneError(payload) { console.error(payload.message); }
 </script>
 
 <div class="convert-stack">
@@ -165,10 +161,10 @@
     {#if sState === "idle" && fwdBatchState === "idle"}
       <FileDropZone
         accept="svg"
-        on:single-file={onFwdSingle}
-        on:batch-zip={onFwdBatchZip}
-        on:batch-loose={onFwdBatchLoose}
-        on:error={onDropZoneError}
+        onsinglefile={onFwdSingle}
+        onbatchzip={onFwdBatchZip}
+        onbatchloose={onFwdBatchLoose}
+        onerror={onDropZoneError}
       />
     {/if}
 
@@ -178,8 +174,8 @@
       <div class="result-header">
         <span class="success-badge">✓ {sourceName}</span>
         <div class="row-gap">
-          <WatermelonButton on:click={exportSvgSingle} label="Export .xml" variant="teal" />
-          <WatermelonButton on:click={resetFwd} label="New" variant="outline" />
+          <WatermelonButton onclick={exportSvgSingle} label="Export .xml" variant="teal" />
+          <WatermelonButton onclick={resetFwd} label="New" variant="outline" />
         </div>
       </div>
       <div class="report-card">
@@ -192,7 +188,7 @@
       <div class="error-box">
         <p class="error-title">⚠ Conversion failed</p>
         <p class="error-msg">{sError}</p>
-        <WatermelonButton on:click={resetFwd} label="Try again" variant="outline" />
+        <WatermelonButton onclick={resetFwd} label="Try again" variant="outline" />
       </div>
     {/if}
 
@@ -206,14 +202,14 @@
       <div class="done-box">
         <p class="success-badge">✓ {fwdBatchCount} batch {fwdBatchCount === 1 ? "job" : "jobs"} exported</p>
         <div class="row-gap" style="margin-top:14px">
-          <WatermelonButton on:click={resetFwd} label="New batch" variant="outline" />
+          <WatermelonButton onclick={resetFwd} label="New batch" variant="outline" />
         </div>
       </div>
     {:else if fwdBatchState === "error"}
       <div class="error-box">
         <p class="error-title">⚠ Batch failed</p>
         <p class="error-msg">{fwdBatchError}</p>
-        <WatermelonButton on:click={resetFwd} label="Try again" variant="outline" />
+        <WatermelonButton onclick={resetFwd} label="Try again" variant="outline" />
       </div>
     {/if}
   </section>
@@ -227,10 +223,10 @@
     {#if rState === "idle" && revBatchState === "idle"}
       <FileDropZone
         accept="xml"
-        on:single-file={onRevSingle}
-        on:batch-zip={onRevBatchZip}
-        on:batch-loose={onRevBatchLoose}
-        on:error={onDropZoneError}
+        onsinglefile={onRevSingle}
+        onbatchzip={onRevBatchZip}
+        onbatchloose={onRevBatchLoose}
+        onerror={onDropZoneError}
       />
     {/if}
 
@@ -240,8 +236,8 @@
       <div class="result-header">
         <span class="success-badge">✓ {rSourceName}</span>
         <div class="row-gap">
-          <WatermelonButton on:click={exportSvgFromVd} label="Export .svg" variant="teal" />
-          <WatermelonButton on:click={resetRev} label="New" variant="outline" />
+          <WatermelonButton onclick={exportSvgFromVd} label="Export .svg" variant="teal" />
+          <WatermelonButton onclick={resetRev} label="New" variant="outline" />
         </div>
       </div>
       <div class="report-card">
@@ -254,7 +250,7 @@
       <div class="error-box">
         <p class="error-title">⚠ Conversion failed</p>
         <p class="error-msg">{rError}</p>
-        <WatermelonButton on:click={resetRev} label="Try again" variant="outline" />
+        <WatermelonButton onclick={resetRev} label="Try again" variant="outline" />
       </div>
     {/if}
 
@@ -268,14 +264,14 @@
       <div class="done-box">
         <p class="success-badge">✓ {revBatchCount} batch {revBatchCount === 1 ? "job" : "jobs"} exported</p>
         <div class="row-gap" style="margin-top:14px">
-          <WatermelonButton on:click={resetRev} label="New batch" variant="outline" />
+          <WatermelonButton onclick={resetRev} label="New batch" variant="outline" />
         </div>
       </div>
     {:else if revBatchState === "error"}
       <div class="error-box">
         <p class="error-title">⚠ Batch failed</p>
         <p class="error-msg">{revBatchError}</p>
-        <WatermelonButton on:click={resetRev} label="Try again" variant="outline" />
+        <WatermelonButton onclick={resetRev} label="Try again" variant="outline" />
       </div>
     {/if}
   </section>

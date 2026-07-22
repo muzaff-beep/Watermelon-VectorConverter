@@ -1,7 +1,5 @@
 <script>
-  export let label = "Working…";
-  export let indeterminate = false;
-  export let value = 0;
+  let { label = "Working…", indeterminate = false, value = 0 } = $props();
 </script>
 
 <div class="progress-wrap">

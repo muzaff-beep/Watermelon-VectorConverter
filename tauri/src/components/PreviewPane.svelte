@@ -1,15 +1,12 @@
 <script>
-  export let svgPreviewPng = null;
-  export let vdPreviewPng  = null;
-  export let vdXml = "";
-  /** "forward" (SVG->XML, default) or "reverse" (XML->SVG) — only changes labels. */
-  export let direction = "forward";
+  let { svgPreviewPng = null, vdPreviewPng = null, vdXml = "", direction = "forward" } = $props();
+  // direction: "forward" (SVG->XML, default) or "reverse" (XML->SVG) — only changes labels.
 
-  $: leftLabel  = direction === "reverse" ? "Original VD"  : "Original SVG";
-  $: rightLabel = direction === "reverse" ? "Generated SVG" : "Generated VD";
-  $: codeTitle  = direction === "reverse" ? "SVG XML" : "VectorDrawable XML";
+  let leftLabel  = $derived(direction === "reverse" ? "Original VD"  : "Original SVG");
+  let rightLabel = $derived(direction === "reverse" ? "Generated SVG" : "Generated VD");
+  let codeTitle  = $derived(direction === "reverse" ? "SVG XML" : "VectorDrawable XML");
 
-  let xmlExpanded = false;
+  let xmlExpanded = $state(false);
 
   function toDataUrl(arr) {
     if (!arr) return null;
@@ -17,8 +14,8 @@
     return URL.createObjectURL(blob);
   }
 
-  $: svgUrl = toDataUrl(svgPreviewPng);
-  $: vdUrl  = toDataUrl(vdPreviewPng);
+  let svgUrl = $derived(toDataUrl(svgPreviewPng));
+  let vdUrl  = $derived(toDataUrl(vdPreviewPng));
 </script>
 
 <div class="preview-row">
@@ -44,7 +41,7 @@
   <div class="xml-card">
     <div class="xml-header">
       <span class="xml-title">{codeTitle}</span>
-      <button class="expand-btn" on:click={() => xmlExpanded = !xmlExpanded}>
+      <button class="expand-btn" onclick={() => xmlExpanded = !xmlExpanded}>
         {xmlExpanded ? "Collapse" : "Expand"}
       </button>
     </div>

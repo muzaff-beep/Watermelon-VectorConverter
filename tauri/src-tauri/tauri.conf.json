@@ -59,11 +59,6 @@
         "type": "offlineInstaller"
       }
     },
-    "linux": {
-      "deb": {
-        "depends": ["xdg-utils", "desktop-file-utils"]
-      }
-    },
     "externalBin": [
       "binaries/wvgc-viewer"
     ]

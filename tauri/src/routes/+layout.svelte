@@ -3,6 +3,8 @@
   import Nav from "../components/Nav.svelte";
   import AssocNoticeModal from "../components/AssocNoticeModal.svelte";
   import { settings } from "../lib/settings";
+
+  let { children } = $props();
 </script>
 
 <div class="shell" class:dark={$settings.darkMode}>
@@ -14,7 +16,7 @@
       <span class="banner-title">Watermelon Vector Converter</span>
     </div>
     <main class="content">
-      <slot />
+      {@render children()}
     </main>
   </div>
   <AssocNoticeModal />
