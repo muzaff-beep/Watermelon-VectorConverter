@@ -56,7 +56,7 @@
         "installerHooks": "installer/hooks.nsi"
       },
       "webviewInstallMode": {
-        "type": "offlineInstaller"
+        "type": "embedBootstrapper"
       }
     },
     "externalBin": [
